@@ -10,6 +10,28 @@ Supports **Solidity** (Foundry/Hardhat) and **Solana/Anchor** (Rust) codebases.
 
 ## Features
 
+### 📥 Multi-Source Input
+Accepts audit targets from multiple sources — no manual setup needed:
+
+```bash
+# GitHub repo
+bash scripts/source_fetcher.sh https://github.com/org/repo
+
+# Verified contract on any block explorer
+bash scripts/source_fetcher.sh https://bscscan.com/address/0x1234...
+
+# Raw address + chain
+bash scripts/source_fetcher.sh 0x1234...abcd --chain bsc
+
+# ZIP file from client
+bash scripts/source_fetcher.sh ./contracts.zip
+
+# Local directory
+bash scripts/source_fetcher.sh ./src
+```
+
+**Supported explorers:** Etherscan, BSCScan, Polygonscan, Arbiscan, Optimism, Fantom, Avalanche, Base (+ testnets)
+
 ### 🛡️ Pre-Audit Malware Scan
 Every scoping session starts with a mandatory malware scan. Untrusted audit codebases can contain shell injection, network exfiltration, and obfuscated payloads targeting auditor machines.
 
@@ -73,16 +95,18 @@ scoping-bee/
 │   ├── attack-surfaces.md          # 42 attack surface checklists (EVM + Solana)
 │   └── complexity-rubric.md        # 5-metric scoring rubric + effort estimation
 └── scripts/
+    ├── source_fetcher.sh           # Multi-source input fetcher (GitHub/Explorer/ZIP)
     ├── malware_scan.sh             # Pre-audit malware scanner
     └── sloc_counter.sh             # Dual-language nSLOC counter
 ```
 
 ## Scoping Workflow
 
-The skill runs **6 phases** in order:
+The skill runs **7 phases** in order:
 
 ```
-Phase 0: Malware Scan        → CLEAN / WARNING / BLOCKED
+Source Acquisition            → Fetch from GitHub / Explorer / ZIP / Local
+Phase 0: Malware Scan         → CLEAN / WARNING / BLOCKED
 Phase 1: Codebase Ingestion   → Contract inventory, nSLOC, dependencies
 Phase 2: Architectural Context → Protocol type, value flow, trust boundaries
 Phase 3: System Mapping        → Per-contract entry points, state, roles
@@ -126,6 +150,18 @@ Each contract is scored on 5 weighted metrics:
 ### Standalone Scripts
 
 ```bash
+# Fetch from GitHub
+bash scripts/source_fetcher.sh https://github.com/org/repo
+
+# Fetch verified contract from BSCScan
+bash scripts/source_fetcher.sh https://bscscan.com/address/0x1234... --api-key YOUR_KEY
+
+# Fetch by address + chain
+bash scripts/source_fetcher.sh 0xAbCd...1234 --chain polygon
+
+# Extract a ZIP
+bash scripts/source_fetcher.sh ./client-contracts.zip --output ./audit-target
+
 # Malware scan a repo before opening it
 bash scripts/malware_scan.sh /path/to/audit/repo
 
@@ -139,6 +175,8 @@ bash scripts/sloc_counter.sh /path/to/programs --lang rust --pace 300
 ### As an AI Skill
 
 When integrated with an AI coding assistant, simply ask:
+> "Scope the audit for https://github.com/org/repo"  
+> "Scope this contract: 0x1234... on BSC"  
 > "Scope the audit for ./src"
 
 The skill auto-triggers on keywords: *scope*, *scoping*, *audit complexity*, *scope document*.

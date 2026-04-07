@@ -51,12 +51,72 @@ the user can re-calculate if they adjust later.
 
 When the user asks to scope an audit:
 
-1. Identify the target codebase path
-2. Detect language: Solidity (`.sol`) or Rust/Anchor (`.rs` with `Anchor.toml`)
-3. Run **Phase 0: Malware Scan** first — ALWAYS
-4. If clean, proceed through Phases 1–6
-5. Output the final scope report as a markdown artifact using the template
+1. Determine the **input type** (see Source Acquisition below)
+2. If not a local directory, run the source fetcher to normalize the input
+3. Detect language: Solidity (`.sol`) or Rust/Anchor (`.rs` with `Anchor.toml`)
+4. Run **Phase 0: Malware Scan** first — ALWAYS
+5. If clean, proceed through Phases 1–6
+6. Output the final scope report as a markdown artifact using the template
    in [scope-report-template.md](references/scope-report-template.md)
+
+---
+
+## Source Acquisition
+
+The skill accepts **4 input types**, auto-detected:
+
+| Input | Example | What Happens |
+|-------|---------|-------------|
+| **GitHub URL** | `https://github.com/org/repo` | Shallow clone (`--depth 1`) |
+| **Explorer URL** | `https://bscscan.com/address/0x1234...` | Fetch verified source via API |
+| **Contract address** | `0x1234...abcd` (+ `--chain bsc`) | Fetch verified source via API |
+| **ZIP file** | `./contracts.zip` | Extract and flatten |
+| **Local directory** | `./src` | Use as-is |
+
+### Source Fetcher Script
+
+```bash
+bash <skill_dir>/scripts/source_fetcher.sh <input> [OPTIONS]
+```
+
+**Options:**
+- `--output <dir>` — Output directory (default: `./audit-target`)
+- `--chain <chain>` — Chain for address input (eth, bsc, polygon, arbitrum, etc.)
+- `--api-key <key>` — Block explorer API key (or set `EXPLORER_API_KEY` env var)
+- `--branch <branch>` — Git branch to clone (default: main)
+
+### Supported Block Explorers
+
+| Chain | Explorer | API |
+|-------|----------|-----|
+| Ethereum | etherscan.io | ✅ |
+| Goerli | goerli.etherscan.io | ✅ |
+| Sepolia | sepolia.etherscan.io | ✅ |
+| BSC | bscscan.com | ✅ |
+| BSC Testnet | testnet.bscscan.com | ✅ |
+| Polygon | polygonscan.com | ✅ |
+| Arbitrum | arbiscan.io | ✅ |
+| Optimism | optimistic.etherscan.io | ✅ |
+| Fantom | ftmscan.com | ✅ |
+| Avalanche | snowtrace.io | ✅ |
+| Base | basescan.org | ✅ |
+
+### Decision Logic
+
+```
+If input is a GitHub URL      → clone repo → proceed to Phase 0
+If input is an explorer URL   → extract address + chain from URL → fetch via API → proceed
+If input is a raw 0x address  → require --chain flag → fetch via API → proceed
+If input is a .zip file       → extract → flatten single root dir → proceed
+If input is a local directory → use directly → proceed
+```
+
+**For block explorer inputs:**
+- The script writes a `.explorer_metadata.json` with contract name, compiler
+  version, optimization settings, and proxy status
+- ABI is saved alongside source files
+- If the contract is a **proxy**, the script warns — you should also fetch the
+  implementation contract
 
 ---
 
