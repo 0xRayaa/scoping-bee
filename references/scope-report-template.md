@@ -200,10 +200,10 @@ graph TD
 
 | Priority | Contract | Function/Area | Risk Factors | Recommended Approach |
 |----------|----------|--------------|-------------|---------------------|
-| 🔴 P0 | Contract1 | `withdraw()` | Value handling, cross-contract, permissionless | Nemesis interrogation |
+| 🔴 P0 | Contract1 | `withdraw()` | Value handling, cross-contract, permissionless | Deep interrogation |
 | 🔴 P0 | Contract1 | `claim()` | Reward calculation, state pointer | Invariant extraction |
-| 🟡 P1 | Contract2 | `deposit()` | Share calculation, first depositor | Pashov vector scan |
-| 🟡 P1 | Contract1 | `setConfig()` | Admin privilege, state reset | Standard review |
+| 🟡 P1 | Contract2 | `deposit()` | Share calculation, first depositor | Vector scan |
+| 🟡 P1 | Contract1 | `setConfig()` | Admin privilege, state reset | Checklist review |
 | 🟢 P2 | Contract2 | `view functions` | Read-only | Quick review |
 
 ---
@@ -212,17 +212,17 @@ graph TD
 
 | Contract | Approach | Rationale |
 |----------|----------|-----------|
-| Contract1.sol | **Full Nemesis** | High complexity, cross-contract value flows, multiple coupled state vars |
-| Contract2.sol | **Pashov Vector Scan** | Medium complexity, standard patterns with edge cases |
-| LibHelper.sol | **Standard Checklist** | Low complexity, stateless library |
+| Contract1.sol | **Deep Interrogation** | High complexity, cross-contract value flows, multiple coupled state vars |
+| Contract2.sol | **Vector Scan** | Medium complexity, standard patterns with edge cases |
+| LibHelper.sol | **Checklist Review** | Low complexity, stateless library |
 
 ### Suggested Audit Flow
 
 ```
 1. Scope Review (this document) ← YOU ARE HERE
 2. Invariant Extraction (all core contracts)
-3. Deep Audit Pass 1: Nemesis on P0 targets
-4. Deep Audit Pass 2: Pashov vectors on P1 targets
+3. Deep Audit Pass 1: Deep interrogation on P0 targets
+4. Deep Audit Pass 2: Vector scan on P1 targets
 5. Cross-contract interaction audit
 6. PoC construction for findings
 7. Remediation review
@@ -236,8 +236,8 @@ graph TD
 
 | Component | nSLOC | Base Days | Multiplier | Adjusted Days | Notes |
 |-----------|-------|-----------|------------|---------------|-------|
-| Contract1.sol | [N] | [N÷pace] | ×[M] (TIER) | [D] | Nemesis |
-| Contract2.sol | [N] | [N÷pace] | ×[M] (TIER) | [D] | Pashov |
+| Contract1.sol | [N] | [N÷pace] | ×[M] (TIER) | [D] | Deep interrogation |
+| Contract2.sol | [N] | [N÷pace] | ×[M] (TIER) | [D] | Vector scan |
 | Cross-contract review | — | — | — | [D] | Interaction audit |
 | PoC construction | — | — | — | [D] | For confirmed findings |
 | Report writing | — | — | — | [D] | Final deliverable |

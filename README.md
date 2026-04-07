@@ -116,7 +116,7 @@ Each contract is scored on 5 weighted metrics:
 | Upgradeability Risk | 15% |
 
 **Risk Tiers:**
-- 🟢 **LOW** (1.0–1.5) → Standard checklist review
+- 🟢 **LOW** (1.0–1.5) → Checklist review
 - 🟡 **MEDIUM** (1.6–2.5) → Vector scan methodology
 - 🟠 **HIGH** (2.6–3.5) → Deep interrogation methodology
 - 🔴 **CRITICAL** (3.6–4.0) → Full methodology + invariant extraction + PoC

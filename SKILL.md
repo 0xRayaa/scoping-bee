@@ -16,8 +16,8 @@ Systematic pre-audit scoping for smart contract security engagements.
 Supports **Solidity** (Foundry/Hardhat) and **Solana/Anchor** (Rust) codebases.
 
 Produces a structured scope report with configurable effort estimation that
-feeds directly into deep audit methodologies (Pashov vector scanning, Nemesis
-interrogation, invariant extraction).
+feeds directly into deep audit methodologies (vector scanning,
+threat interrogation, invariant extraction).
 
 ---
 

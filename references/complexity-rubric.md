@@ -122,10 +122,10 @@ composite = (nSLOC × 0.25) + (extIntegration × 0.25) + (stateCoupling × 0.20)
 
 | Composite Range | Tier | Color | Audit Approach |
 |----------------|------|-------|----------------|
-| 1.0 – 1.5 | LOW | 🟢 | Standard checklist review |
-| 1.6 – 2.5 | MEDIUM | 🟡 | Pashov vector scan |
-| 2.6 – 3.5 | HIGH | 🟠 | Full Nemesis interrogation |
-| 3.6 – 4.0 | CRITICAL | 🔴 | Nemesis + invariant extraction + PoC |
+| 1.0 – 1.5 | LOW | 🟢 | Checklist review |
+| 1.6 – 2.5 | MEDIUM | 🟡 | Vector scan |
+| 2.6 – 3.5 | HIGH | 🟠 | Deep interrogation |
+| 3.6 – 4.0 | CRITICAL | 🔴 | Deep interrogation + invariant extraction + PoC |
 
 ---
 
