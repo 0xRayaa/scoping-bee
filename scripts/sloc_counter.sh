@@ -49,30 +49,165 @@ if [ "$LANG_MODE" = "auto" ]; then
   fi
 fi
 
-count_nsloc_solidity() {
-  local file="$1"
-  perl -0777 -pe 's{/\*.*?\*/}{}gs' "$file" | \
-    sed -E '
-      /^\s*\/\//d
-      s/\/\/.*$//
-      /^\s*$/d
-      /^\s*[\{\}]\s*$/d
-      /^\s*(pragma|import|\/\/\s*SPDX)/d
-    ' | wc -l | tr -d '[:space:]'
+# Count total lines in a file
+count_total_lines() {
+  wc -l < "$1" | tr -d '[:space:]'
 }
 
+# Count comment lines (single-line + block comment lines)
+count_comment_lines() {
+  local file="$1"
+  local single_line block_lines
+  # Single-line comments (// at start of line, ignoring whitespace)
+  single_line=$(grep -cE '^\s*//' "$file" 2>/dev/null || echo 0)
+  # Block comment lines (lines inside /* ... */ blocks)
+  block_lines=$(perl -0777 -ne '
+    my $count = 0;
+    while (m{/\*(.*?\*/)}gs) {
+      my $block = $1;
+      $count += ($block =~ tr/\n/\n/);
+      $count += 1;  # the opening line
+    }
+    print $count;
+  ' "$file")
+  echo $(( single_line + block_lines ))
+}
+
+# Strip comments safely — avoids stripping // inside string literals
+strip_comments() {
+  local file="$1"
+  perl -0777 -pe '
+    # Remove block comments
+    s{/\*.*?\*/}{}gs;
+    # Remove single-line comments, but not // inside strings
+    s{
+      (\"(?:[^\"\\\\]|\\\\.)*\")   # double-quoted string
+      |
+      ('\''(?:[^'\''\\\\]|\\\\.)*'\'')   # single-quoted string
+      |
+      (//[^\n]*)                    # single-line comment
+    }{
+      defined($1) ? $1 : defined($2) ? $2 : ""
+    }gex;
+  ' "$file"
+}
+
+# SLOC: non-blank, non-comment source lines
+count_sloc_solidity() {
+  local file="$1"
+  strip_comments "$file" | \
+    sed -E '/^\s*$/d' | wc -l | tr -d '[:space:]'
+}
+
+# nSLOC: counts ONLY logic lines inside function/modifier/constructor bodies
+# Excludes: state vars, constants, struct/enum/event/error declarations,
+#           imports, pragmas, contract declarations, function signatures, braces
+count_nsloc_solidity() {
+  local file="$1"
+  strip_comments "$file" | perl -ne '
+    BEGIN { $depth = 0; $in_body = 0; $body_depth = -1; $count = 0; $awaiting_brace = 0; }
+
+    chomp;
+    my $line = $_;
+
+    # Skip blank lines everywhere
+    next if $line =~ /^\s*$/;
+
+    # Remove string contents for accurate brace counting
+    (my $clean = $line) =~ s/"(?:[^"\\\\]|\\\\.)*"//g;
+
+    my $opens = ($clean =~ tr/{//);
+    my $closes = ($clean =~ tr/}//);
+
+    # Detect function/modifier/constructor/receive/fallback declaration
+    if (!$in_body && $line =~ /^\s*(function\s|modifier\s|constructor\s*\(|receive\s*\(|fallback\s*\()/) {
+      $awaiting_brace = 1;
+    }
+
+    # Found the opening brace of the body
+    if ($awaiting_brace && $opens > 0) {
+      $in_body = 1;
+      $awaiting_brace = 0;
+      $body_depth = $depth + 1;
+    }
+
+    $depth += $opens - $closes;
+
+    # Count lines inside function/modifier bodies only
+    if ($in_body && $depth >= $body_depth) {
+      # Skip brace/punctuation-only lines
+      next if $line =~ /^\s*[\{\}\(\)\];,]+\s*$/;
+      # Skip function/modifier/constructor signature lines
+      next if $line =~ /^\s*(function\s|modifier\s|constructor\s*\(|receive\s*\(|fallback\s*\()/;
+      # Skip multi-line signature parameter lines (before body opens)
+      next if $line =~ /^\s*(address|uint\d*|int\d*|bytes\d*|bool|string|mapping)\s+\w+\s*,?\s*$/;
+      # Skip closing paren of multi-line signatures
+      next if $line =~ /^\s*\)\s*(external|public|internal|private|view|pure|payable|override|virtual|returns|nonReentrant|whenNotPaused|onlyOwner|onlyTradingModule|onlyRegisteredManager)*[\s{]*$/;
+      # Skip lines that are only modifier/visibility keywords
+      next if $line =~ /^\s*(external|public|internal|private|view|pure|payable|override|virtual|returns\s*\(.*\))\s*[\{]?\s*$/;
+      $count++;
+    }
+
+    # Exited function body
+    if ($in_body && $depth < $body_depth) {
+      $in_body = 0;
+      $body_depth = -1;
+    }
+
+    END { print $count; }
+  '
+}
+
+count_sloc_rust() {
+  local file="$1"
+  strip_comments "$file" | \
+    sed -E '/^\s*$/d' | wc -l | tr -d '[:space:]'
+}
+
+# nSLOC for Rust: counts only logic lines inside fn/impl bodies
+# Excludes: use/mod, attributes, struct/enum field declarations, trait signatures
 count_nsloc_rust() {
   local file="$1"
-  perl -0777 -pe 's{/\*.*?\*/}{}gs' "$file" | \
-    sed -E '
-      /^\s*\/\//d
-      s/\/\/.*$//
-      /^\s*$/d
-      /^\s*[\{\}]\s*$/d
-      /^\s*(use |mod |pub use |pub mod )/d
-      /^\s*#\[/d
-      /^\s*#!\[/d
-    ' | wc -l | tr -d '[:space:]'
+  strip_comments "$file" | perl -ne '
+    BEGIN { $depth = 0; $in_body = 0; $body_depth = -1; $count = 0; $awaiting_brace = 0; }
+
+    chomp;
+    my $line = $_;
+    next if $line =~ /^\s*$/;
+
+    (my $clean = $line) =~ s/"(?:[^"\\\\]|\\\\.)*"//g;
+    my $opens = ($clean =~ tr/{//);
+    my $closes = ($clean =~ tr/}//);
+
+    # Detect fn/impl block start
+    if (!$in_body && $line =~ /^\s*(pub\s+)?(pub\(crate\)\s+)?(fn\s|impl\s)/) {
+      $awaiting_brace = 1;
+    }
+
+    if ($awaiting_brace && $opens > 0) {
+      $in_body = 1;
+      $awaiting_brace = 0;
+      $body_depth = $depth + 1;
+    }
+
+    $depth += $opens - $closes;
+
+    if ($in_body && $depth >= $body_depth) {
+      next if $line =~ /^\s*[\{\}\(\)\];,]+\s*$/;
+      next if $line =~ /^\s*(pub\s+)?(pub\(crate\)\s+)?(fn\s|impl\s)/;
+      next if $line =~ /^\s*(use |mod |pub use |pub mod |pub\(crate\) (use|mod) )/;
+      next if $line =~ /^\s*#[\[!]/;
+      next if $line =~ /^\s*extern\s+crate\s/;
+      $count++;
+    }
+
+    if ($in_body && $depth < $body_depth) {
+      $in_body = 0;
+      $body_depth = -1;
+    }
+
+    END { print $count; }
+  '
 }
 
 # Collect files
@@ -103,15 +238,18 @@ if [ ${#FILES[@]} -eq 0 ]; then
   exit 0
 fi
 
+TOTAL_SLOC=0
 TOTAL_NSLOC=0
+TOTAL_LINES=0
+TOTAL_COMMENT_LINES=0
 TOTAL_FILES=0
 
 echo "🐝 Scoping Bee — nSLOC Counter"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Language: $LANG_MODE | Audit pace: $AUDIT_PACE nSLOC/day"
 echo ""
-printf "%-60s %8s\n" "File" "nSLOC"
-printf "%-60s %8s\n" "------------------------------------------------------------" "--------"
+printf "%-55s %8s %8s %8s\n" "File" "Lines" "SLOC" "nSLOC"
+printf "%-55s %8s %8s %8s\n" "-------------------------------------------------------" "--------" "--------" "--------"
 
 for file in "${FILES[@]}"; do
   # Skip interface-only Solidity files if flag not set
@@ -127,16 +265,21 @@ for file in "${FILES[@]}"; do
   if [ "$LANG_MODE" = "rust" ]; then
     base=$(basename "$file")
     if [ "$base" = "mod.rs" ] || [ "$base" = "lib.rs" ]; then
-      total_lines=$(wc -l < "$file" | tr -d '[:space:]')
-      if [ "$total_lines" -lt 20 ]; then
+      file_total_lines=$(wc -l < "$file" | tr -d '[:space:]')
+      if [ "$file_total_lines" -lt 20 ]; then
         continue  # Skip tiny re-export files
       fi
     fi
   fi
 
+  total_lines=$(count_total_lines "$file")
+  comment_lines=$(count_comment_lines "$file")
+
   if [ "$LANG_MODE" = "solidity" ]; then
+    sloc=$(count_sloc_solidity "$file")
     nsloc=$(count_nsloc_solidity "$file")
   else
+    sloc=$(count_sloc_rust "$file")
     nsloc=$(count_nsloc_rust "$file")
   fi
 
@@ -145,35 +288,58 @@ for file in "${FILES[@]}"; do
     rel_path=$(basename "$file")
   fi
 
-  printf "%-60s %8s\n" "$rel_path" "$nsloc"
+  printf "%-55s %8s %8s %8s\n" "$rel_path" "$total_lines" "$sloc" "$nsloc"
+  TOTAL_LINES=$((TOTAL_LINES + total_lines))
+  TOTAL_SLOC=$((TOTAL_SLOC + sloc))
   TOTAL_NSLOC=$((TOTAL_NSLOC + nsloc))
+  TOTAL_COMMENT_LINES=$((TOTAL_COMMENT_LINES + comment_lines))
   TOTAL_FILES=$((TOTAL_FILES + 1))
 done
 
-printf "%-60s %8s\n" "------------------------------------------------------------" "--------"
-printf "%-60s %8s\n" "TOTAL ($TOTAL_FILES files)" "$TOTAL_NSLOC"
+printf "%-55s %8s %8s %8s\n" "-------------------------------------------------------" "--------" "--------" "--------"
+printf "%-55s %8s %8s %8s\n" "TOTAL ($TOTAL_FILES files)" "$TOTAL_LINES" "$TOTAL_SLOC" "$TOTAL_NSLOC"
+
+# Comment-to-source ratio
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "📈 CODE METRICS"
+echo ""
+if [ "$TOTAL_SLOC" -gt 0 ]; then
+  COMMENT_RATIO=$(awk "BEGIN {printf \"%.2f\", $TOTAL_COMMENT_LINES / $TOTAL_SLOC}")
+  echo "   Total lines:            $TOTAL_LINES"
+  echo "   Source lines (SLOC):    $TOTAL_SLOC"
+  echo "   Normalized (nSLOC):     $TOTAL_NSLOC"
+  echo "   Comment lines:          $TOTAL_COMMENT_LINES"
+  echo "   Comment-to-source:      $COMMENT_RATIO"
+else
+  echo "   No source lines found."
+fi
 
 # Effort estimation
 echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "📊 EFFORT ESTIMATION"
 echo ""
 
 if [ "$TOTAL_NSLOC" -le 200 ]; then
-  echo "   Complexity: SMALL (0–200 nSLOC)"
+  echo "   Complexity: SMALL (0-200 nSLOC)"
 elif [ "$TOTAL_NSLOC" -le 500 ]; then
-  echo "   Complexity: MEDIUM (201–500 nSLOC)"
+  echo "   Complexity: MEDIUM (201-500 nSLOC)"
 elif [ "$TOTAL_NSLOC" -le 1000 ]; then
-  echo "   Complexity: LARGE (501–1000 nSLOC)"
+  echo "   Complexity: LARGE (501-1000 nSLOC)"
 else
   echo "   Complexity: VERY LARGE (1000+ nSLOC)"
 fi
 
 # Calculate days (integer division, round up)
-AUDIT_DAYS=$(( (TOTAL_NSLOC + AUDIT_PACE - 1) / AUDIT_PACE ))
+if [ "$TOTAL_NSLOC" -gt 0 ]; then
+  AUDIT_DAYS=$(( (TOTAL_NSLOC + AUDIT_PACE - 1) / AUDIT_PACE ))
+else
+  AUDIT_DAYS=0
+fi
 
 echo "   Audit pace: $AUDIT_PACE nSLOC/day"
-echo "   Estimated:  ~$AUDIT_DAYS day(s) ($TOTAL_NSLOC ÷ $AUDIT_PACE)"
+echo "   Estimated:  ~$AUDIT_DAYS day(s) ($TOTAL_NSLOC / $AUDIT_PACE)"
 echo ""
-echo "   ⚡ Adjust pace with --pace <N> to recalculate"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "   Adjust pace with --pace <N> to recalculate"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
