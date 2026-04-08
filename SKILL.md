@@ -231,6 +231,10 @@ If only LOW/NONE → Proceed automatically to Phase 1.
 **Always show the threat intelligence scan summary** in the scope report regardless of
 findings, so the user knows it was checked.
 
+**Do NOT include false positive counts** in the threat scan results. Only show
+the category checks and their pass/fail status. Mentioning false positive numbers
+can cause unnecessary concern.
+
 ---
 
 ## Phase 1: Codebase Ingestion
@@ -284,70 +288,35 @@ Parse `foundry.toml`/`Cargo.toml`/`package.json` for external deps with versions
 
 ---
 
-## Phase 2: Architectural Context Build
+## Phase 2: Flow Diagram & Dependencies
 
-Produce the architectural context JSON — the most critical scoping output.
+Produce a **Mermaid flow diagram** showing:
+- How value enters, flows through, and exits the protocol
+- Cross-contract/program call relationships and data flow
+- Trust assumptions between components
 
-```json
-{
-  "protocol_type": "<DEX AMM | Lending | Staking | Vault | Bridge | DAO | NFT | Token>",
-  "chain": "<EVM | Solana | Multi-chain>",
-  "token_model": "<token flow mechanics>",
-  "accounting_model": "<how balances/shares/rewards tracked>",
-  "upgradeability_model": "<None | Proxy | Upgradeable Program>",
-  "value_flow": ["<how value enters, flows, exits>"],
-  "trust_boundaries": ["<who trusts whom, admin powers, external deps>"]
-}
-```
-
-### Solana-Specific Context
-For Anchor programs, also capture:
-- **PDA derivation seeds** and bump management
-- **Account validation** patterns (init, has_one, constraint)
+For Solana/Anchor programs, also capture in the diagram:
+- **PDA derivation** flows
 - **CPI targets** (cross-program invocations)
 - **Signer authority** model
 
----
+Include a **Trust Assumptions** table mapping: From → To → Assumption → Risk if Broken.
 
-## Phase 3: Contract-Level System Mapping
+**Do NOT output raw JSON for architectural context.** Use the flow diagram to
+communicate architecture visually.
 
-### Solidity Contracts
-For each core contract, extract: entry points, state variables, roles,
-external calls, delegatecalls, modifiers, events, key invariants.
-(See full spec in scope-report-template.md)
-
-### Solana/Anchor Programs
-For each instruction, extract:
-```json
-{
-  "instruction": "<name>",
-  "accounts": ["<account: type, mutable?, signer?, PDA?>"],
-  "args": ["<param: type>"],
-  "access_control": "<who can call>",
-  "cpi_calls": ["<program::function>"],
-  "state_changes": ["<what accounts are modified>"],
-  "key_validations": ["<constraint checks>"]
-}
-```
-
-### Cross-Contract/Program Dependency Graph
-Mermaid diagram showing call relationships and data flow.
+**Do NOT include a separate System Maps section** with per-contract JSON.
+The contract inventory table and flow diagram provide sufficient structural detail.
 
 ---
 
-## Phase 4: Attack Surface Enumeration
+## Phase 3: Complexity & Risk Estimation (moved from Phase 5)
 
-Use the language-appropriate checklist from
-[attack-surfaces.md](references/attack-surfaces.md).
-
-**Solidity**: 24 EVM attack surfaces
-**Solana**: 18 Solana-specific attack surfaces
-
-Mark each: `✅ SAFE` | `⚠️ INVESTIGATE` | `❌ EXPOSED` | `N/A`
+**Note:** The Attack Surface Matrix is NOT included in the report. Attack surface
+analysis is performed internally to inform complexity scoring and the prioritized
+audit hitlist, but the full matrix is omitted from the scope report.
 
 ---
-
-## Phase 5: Complexity & Risk Estimation
 
 Score each contract/program using the rubric in
 [complexity-rubric.md](references/complexity-rubric.md).
@@ -369,13 +338,35 @@ Estimated days: [M/N] = [X] days
 
 Apply complexity multipliers from the rubric for per-contract breakdowns.
 
+**Estimated Effort must appear near the top of the report** (right after Executive Summary),
+not at the bottom. This is the most actionable information for the client.
+
 ---
 
-## Phase 6: Scope Report Assembly
+## Phase 4: Scope Report Assembly
 
 Use the template at [scope-report-template.md](references/scope-report-template.md).
 
 Output as: `<protocol_name>_scope_report.md`
+
+### Report Section Order
+
+The scope report follows this section order:
+1. Threat Intelligence Scan
+2. Executive Summary (includes effort summary)
+3. **Estimated Effort** (detailed breakdown — positioned high for visibility)
+4. Contract Inventory
+5. Flow Diagram & Dependencies
+6. Complexity & Risk Scores
+7. Prioritized Audit Hitlist
+8. Recommended Methodology
+9. Open Questions
+10. Appendix: Files Out of Scope
+
+**Sections NOT included in the report:**
+- ~~Architectural Context (JSON)~~ → replaced by Flow Diagram
+- ~~System Maps~~ → covered by Contract Inventory + Flow Diagram
+- ~~Attack Surface Matrix~~ → internal analysis only, informs hitlist
 
 ---
 

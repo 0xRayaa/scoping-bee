@@ -39,14 +39,12 @@ Mock files are automatically excluded from the count.
 bash <project_root>/scripts/codebase_visualizer.sh ./audit-target
 ```
 
-### Step 5: Full Analysis (Phases 1-6)
+### Step 5: Full Analysis (Phases 1-4)
 Follow the complete methodology in [SKILL.md](SKILL.md):
 1. **Codebase Ingestion** — detect language, discover files, count nSLOC, detect deps
-2. **Architectural Context** — protocol type, chain, token model, trust boundaries
-3. **System Mapping** — per-contract entry points, state, roles, external calls
-4. **Attack Surface Enumeration** — use [attack-surfaces.md](references/attack-surfaces.md)
-5. **Complexity & Risk** — use [complexity-rubric.md](references/complexity-rubric.md)
-6. **Scope Report** — output using [scope-report-template.md](references/scope-report-template.md)
+2. **Flow Diagram & Dependencies** — Mermaid diagrams for value flow and cross-contract calls
+3. **Complexity & Risk** — use [complexity-rubric.md](references/complexity-rubric.md)
+4. **Scope Report** — output using [scope-report-template.md](references/scope-report-template.md)
 
 ### Step 6: Output Report
 Save as `<protocol_name>_scope_report.md` in the current working directory.
@@ -58,6 +56,11 @@ Save as `<protocol_name>_scope_report.md` in the current working directory.
 - Always exclude mock/test/script files from nSLOC calculation
 - Always run threat intel scan before analysis
 - Always state the audit pace used in the final report
+- **Threat scan**: Do NOT show false positive counts — only show category check status
+- **Estimated Effort**: Place right after Executive Summary (not at the bottom)
+- **No Architectural Context JSON**: Use Mermaid flow diagrams instead
+- **No System Maps section**: Contract Inventory + Flow Diagram covers this
+- **No Attack Surface Matrix**: Use internally for analysis, omit from report
 
 ## Setup for New Scoping Projects
 
