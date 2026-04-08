@@ -2,28 +2,33 @@
 name: scoping-bee
 description: >-
   Perform structured pre-audit scoping for smart contract security audits
-  (Solidity and Solana/Anchor). Analyzes a codebase to produce architectural
-  context, system maps, attack surface enumeration, complexity scoring, and
-  a time-estimated scope report with configurable auditor pace. Includes
-  pre-scoping malware scan for untrusted codebases. Use when starting a new
-  audit, scoping a contract, evaluating audit complexity, or preparing a
-  scope document for a security engagement.
+  (Solidity and Solana/Anchor). Analyzes a codebase to produce flow diagrams,
+  complexity scoring, prioritized hitlists, and a bee-themed scope report with
+  configurable auditor pace. Includes pre-scoping threat intelligence scan.
+  Use when starting a new audit, scoping a contract, evaluating audit complexity,
+  or preparing a scope document for a security engagement.
 ---
 
 # 🐝 Scoping Bee
 
+**`━━━━⬡⬡⬡━━━━ SKILL METHODOLOGY ━━━━⬡⬡⬡━━━━`**
+
 Systematic pre-audit scoping for smart contract security engagements.
 Supports **Solidity** (Foundry/Hardhat) and **Solana/Anchor** (Rust) codebases.
 
-Produces a structured scope report with configurable effort estimation that
+Produces a bee-themed scope report with configurable effort estimation that
 feeds directly into deep audit methodologies (vector scanning,
 threat interrogation, invariant extraction).
 
 ---
 
-## Configuration
+<div align="center">
 
-### Auditor Pace (Lines of Code per Day)
+### ⬡ CONFIGURATION ⬡
+
+</div>
+
+## Auditor Pace (Lines of Code per Day)
 
 The default audit pace is **350 nSLOC/day**. Adjust this based on:
 - Auditor experience level
@@ -46,6 +51,12 @@ When presenting the final effort estimate, always state the pace used so
 the user can re-calculate if they adjust later.
 
 ---
+
+<div align="center">
+
+### ⬡ INVOCATION ⬡
+
+</div>
 
 ## Invocation
 
@@ -78,6 +89,12 @@ If only LOW/NONE → Proceed automatically to Phase 1.
 ```
 
 ---
+
+<div align="center">
+
+### ⬡ SOURCE ACQUISITION ⬡
+
+</div>
 
 ## Source Acquisition
 
@@ -137,6 +154,12 @@ If input is a local directory → use directly → proceed
   implementation contract
 
 ---
+
+<div align="center">
+
+### ⬡ PHASE 0 — THREAT SCAN ⬡
+
+</div>
 
 ## Phase 0: Threat Intelligence Scan ⚠️ MANDATORY
 
@@ -237,6 +260,12 @@ can cause unnecessary concern.
 
 ---
 
+<div align="center">
+
+### ⬡ PHASE 1 — CODEBASE INGESTION ⬡
+
+</div>
+
 ## Phase 1: Codebase Ingestion
 
 ### 1.1 Detect Language & Framework
@@ -288,6 +317,12 @@ Parse `foundry.toml`/`Cargo.toml`/`package.json` for external deps with versions
 
 ---
 
+<div align="center">
+
+### ⬡ PHASE 2 — FLOW DIAGRAM ⬡
+
+</div>
+
 ## Phase 2: Flow Diagram & Dependencies
 
 Produce a **Mermaid flow diagram** showing:
@@ -310,7 +345,13 @@ The contract inventory table and flow diagram provide sufficient structural deta
 
 ---
 
-## Phase 3: Complexity & Risk Estimation (moved from Phase 5)
+<div align="center">
+
+### ⬡ PHASE 3 — COMPLEXITY SCORING ⬡
+
+</div>
+
+## Phase 3: Complexity & Risk Estimation
 
 **Note:** The Attack Surface Matrix is NOT included in the report. Attack surface
 analysis is performed internally to inform complexity scoring and the prioritized
@@ -342,6 +383,12 @@ Apply complexity multipliers from the rubric for per-contract breakdowns.
 not at the bottom. This is the most actionable information for the client.
 
 ---
+
+<div align="center">
+
+### ⬡ PHASE 4 — REPORT ASSEMBLY ⬡
+
+</div>
 
 ## Phase 4: Scope Report Assembly
 
@@ -404,6 +451,12 @@ The report uses a consistent bee/hive visual language:
 - ~~Attack Surface Matrix~~ → internal analysis only, informs hitlist
 
 ---
+
+<div align="center">
+
+### ⬡ QUICK REFERENCE ⬡
+
+</div>
 
 ## Quick Reference: Protocol Patterns
 

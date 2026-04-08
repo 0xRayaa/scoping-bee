@@ -1,11 +1,23 @@
-# Attack Surface Checklist (EVM + Solana)
+# 🐝 Attack Surface Checklist (EVM + Solana)
+
+**`━━━━⬡⬡⬡━━━━ SCOPING BEE ━━━━⬡⬡⬡━━━━`**
 
 Comprehensive checklist for smart contract audit scoping. Each surface includes
 trigger conditions — if any trigger matches, mark as `⚠️ INVESTIGATE`.
 
 Use **Part A** for Solidity/EVM audits. Use **Part B** for Solana/Anchor audits.
 
+> This checklist is used internally during scoping to inform complexity scoring
+> and the prioritized audit hitlist. The full matrix is **not** included in the
+> final scope report.
+
 ---
+
+<div align="center">
+
+### ⬡ PART A — EVM (SOLIDITY) — 24 SURFACES ⬡
+
+</div>
 
 # Part A: EVM (Solidity)
 
@@ -384,6 +396,12 @@ Use **Part A** for Solidity/EVM audits. Use **Part B** for Solana/Anchor audits.
 
 ---
 ---
+
+<div align="center">
+
+### ⬡ PART B — SOLANA (RUST / ANCHOR) — 18 SURFACES ⬡
+
+</div>
 
 # Part B: Solana (Rust / Anchor)
 

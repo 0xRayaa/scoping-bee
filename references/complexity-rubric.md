@@ -1,8 +1,18 @@
-# Complexity & Risk Scoring Rubric
+# 🐝 Complexity & Risk Scoring Rubric
+
+**`━━━━⬡⬡⬡━━━━ SCOPING BEE ━━━━⬡⬡⬡━━━━`**
 
 Scoring system for estimating smart contract audit complexity and effort.
 Applies to both **Solidity (EVM)** and **Rust/Anchor (Solana)** codebases.
 Each metric is scored 1–4. Composite score = weighted average.
+
+---
+
+<div align="center">
+
+### ⬡ AUDIT PACE ⬡
+
+</div>
 
 ## Configurable Audit Pace
 
@@ -23,6 +33,12 @@ The user can override this at any time. When presenting estimates,
 always state the pace used so they can recalculate.
 
 ---
+
+<div align="center">
+
+### ⬡ METRICS ⬡
+
+</div>
 
 ## Metric 1: nSLOC (Weight: 25%)
 
@@ -111,6 +127,12 @@ Risk from upgrade patterns and mutability.
 
 ---
 
+<div align="center">
+
+### ⬡ COMPOSITE SCORE ⬡
+
+</div>
+
 ## Composite Score Calculation
 
 ```
@@ -120,14 +142,20 @@ composite = (nSLOC × 0.25) + (extIntegration × 0.25) + (stateCoupling × 0.20)
 
 ### Risk Tier Mapping
 
-| Composite Range | Tier | Color | Audit Approach |
-|----------------|------|-------|----------------|
-| 1.0 – 1.5 | LOW | 🟢 | Checklist review |
-| 1.6 – 2.5 | MEDIUM | 🟡 | Vector scan |
-| 2.6 – 3.5 | HIGH | 🟠 | Deep interrogation |
-| 3.6 – 4.0 | CRITICAL | 🔴 | Deep interrogation + invariant extraction + PoC |
+| Composite Range | Tier | Bee Zone | Audit Approach |
+|:---------------|:-----|:---------|:---------------|
+| 1.0 – 1.5 | 🟢 LOW | Low Pollen | Checklist review |
+| 1.6 – 2.5 | 🟡 MEDIUM | Watch Zone | Vector scan |
+| 2.6 – 3.5 | 🟠 HIGH | Sting Zone | Deep interrogation |
+| 3.6 – 4.0 | 🔴 CRITICAL | Critical Sting Zone | Deep interrogation + invariant extraction + PoC |
 
 ---
+
+<div align="center">
+
+### ⬡ EFFORT ESTIMATION ⬡
+
+</div>
 
 ## Effort Estimation Formula
 
@@ -195,6 +223,12 @@ Final estimate: [Z] days
 ```
 
 ---
+
+<div align="center">
+
+### ⬡ CALIBRATION ⬡
+
+</div>
 
 ## Calibration Examples
 
