@@ -84,13 +84,13 @@ else
     EXT="*.sol"
     EXCLUDES=(-not -path "*/node_modules/*" -not -path "*/lib/*")
     if [ "$INCLUDE_TESTS" = false ]; then
-      EXCLUDES+=(-not -path "*/test/*" -not -path "*/tests/*" -not -path "*/mock/*" -not -path "*/mocks/*" -not -path "*/script/*" -not -path "*/scripts/*")
+      EXCLUDES+=(-not -path "*/test/*" -not -path "*/tests/*" -not -path "*/mock/*" -not -path "*/mocks/*" -not -path "*/script/*" -not -path "*/scripts/*" -not -name "Mock*" -not -name "mock*" -not -name "*Mock.sol" -not -name "*mock.sol")
     fi
   else
     EXT="*.rs"
     EXCLUDES=(-not -path "*/target/*")
     if [ "$INCLUDE_TESTS" = false ]; then
-      EXCLUDES+=(-not -path "*/tests/*" -not -path "*/test/*" -not -name "*_test.rs")
+      EXCLUDES+=(-not -path "*/tests/*" -not -path "*/test/*" -not -name "*_test.rs" -not -path "*/mock/*" -not -path "*/mocks/*" -not -name "mock_*" -not -name "*_mock.rs")
     fi
   fi
   while IFS= read -r f; do

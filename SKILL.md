@@ -49,15 +49,33 @@ the user can re-calculate if they adjust later.
 
 ## Invocation
 
-When the user asks to scope an audit:
+When the user provides a **GitHub URL**, **ZIP file**, **contract address**, **explorer URL**,
+or **local directory path**, immediately start the scoping pipeline — no questions asked.
 
-1. Determine the **input type** (see Source Acquisition below)
-2. If not a local directory, run the source fetcher to normalize the input
-3. Detect language: Solidity (`.sol`) or Rust/Anchor (`.rs` with `Anchor.toml`)
-4. Run **Phase 0: Malware Scan** first — ALWAYS
-5. If clean, proceed through Phases 1–6
-6. Output the final scope report as a markdown artifact using the template
+### Auto-Trigger Inputs
+
+Any of these inputs should trigger the full pipeline automatically:
+- `https://github.com/org/repo` — GitHub URL
+- `./contracts.zip` — ZIP archive
+- `https://etherscan.io/address/0x...` — Block explorer URL
+- `0x1234...abcd --chain bsc` — Raw contract address
+- `./src` or `./contracts` — Local directory
+
+### Pipeline Steps
+
+1. **Fetch source** — run `source_fetcher.sh` to normalize input into `./audit-target`
+2. **Threat scan** — run `threat_intel_scan.sh` on the fetched source (MANDATORY)
+3. **Proceed if clean** — run Phases 1–6 on the normalized source
+4. **Output report** — save as `<protocol_name>_scope_report.md` using the template
    in [scope-report-template.md](references/scope-report-template.md)
+
+### Decision Logic After Threat Scan
+
+```
+If HIGH severity findings → STOP. Report findings. Ask user to review.
+If MEDIUM severity findings → WARN. Show findings. Ask user to confirm proceed.
+If only LOW/NONE → Proceed automatically to Phase 1.
+```
 
 ---
 
@@ -234,14 +252,18 @@ find <src_dir> -name "*.sol" \
   ! -path "*/test/*" ! -path "*/tests/*" \
   ! -path "*/mock/*" ! -path "*/mocks/*" \
   ! -path "*/script/*" ! -path "*/scripts/*" \
-  ! -path "*/node_modules/*" ! -path "*/lib/*" | sort
+  ! -path "*/node_modules/*" ! -path "*/lib/*" \
+  ! -name "Mock*" ! -name "mock*" \
+  ! -name "*Mock.sol" ! -name "*mock.sol" | sort
 ```
 
 **Rust/Anchor:**
 ```bash
 find <programs_dir> -name "*.rs" \
   ! -path "*/tests/*" ! -path "*/test/*" \
-  ! -path "*/target/*" ! -name "mod.rs" | sort
+  ! -path "*/target/*" ! -name "mod.rs" \
+  ! -path "*/mock/*" ! -path "*/mocks/*" \
+  ! -name "mock_*" ! -name "*_mock.rs" | sort
 ```
 
 Classify each file as:
