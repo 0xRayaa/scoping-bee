@@ -498,5 +498,5 @@ fi
 [ -f "$OUTPUT_DIR/Cargo.toml" ] && echo "   Cargo.toml found"
 
 echo ""
-echo "   ➡️  Ready for: bash scripts/malware_scan.sh $OUTPUT_DIR"
+echo "   ➡️  Ready for: bash scripts/threat_intel_scan.sh $OUTPUT_DIR"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

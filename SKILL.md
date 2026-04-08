@@ -120,35 +120,87 @@ If input is a local directory → use directly → proceed
 
 ---
 
-## Phase 0: Malware Scan ⚠️ MANDATORY
+## Phase 0: Threat Intelligence Scan ⚠️ MANDATORY
 
 **Run this BEFORE any other analysis.** Untrusted audit codebases can contain
-malware targeting auditor machines.
+malware, phishing kits, supply chain attacks, and backdoors targeting auditor machines.
 
 ```bash
-bash <skill_dir>/scripts/malware_scan.sh <project_root>
+bash <skill_dir>/scripts/threat_intel_scan.sh <project_root>
 ```
 
-The scan checks for:
+The scan performs **10 phases** of deep threat analysis:
 
-### High Severity (BLOCK — do not proceed without user approval)
-- **Shell command execution**: `forge script` with `--ffi`, Hardhat `exec`,
-  npm `postinstall`/`preinstall` scripts that run code
-- **Network exfiltration**: `curl`, `wget`, `fetch`, outbound HTTP in scripts
-- **Obfuscated payloads**: Base64 encoded strings, hex-encoded shellcode
-- **Suspicious binaries**: Compiled executables, `.so`/`.dylib` files
-- **Symlinks**: Links pointing outside the repo (to `/etc`, `~/.ssh`, etc.)
+### Phase 1: Code Behavior Analysis (HIGH)
+- **Auto-exec lifecycle scripts**: npm `postinstall`/`preinstall` hooks
+- **Network exfiltration**: `curl`, `wget`, `fetch`, `sendBeacon`, outbound HTTP
+- **Obfuscated payloads**: Base64 strings, hex-encoded shellcode
+- **Suspicious binaries**: Compiled executables, `.so`/`.dylib`/`.bin` files
+- **External symlinks**: Links pointing outside the repo
+- **Dynamic code execution**: `eval`, `exec`, `spawn`, `child_process`, `Function()`
+- **Forge FFI**: `vm.ffi()` calls in Solidity
 
-### Medium Severity (WARN — flag for manual review)
-- **FFI enabled in foundry.toml**: `ffi = true` allows Forge to shell out
-- **Custom npm scripts**: Non-standard scripts in `package.json`
-- **Assembly with external calls**: Inline assembly making syscalls
-- **Hidden files**: Dotfiles that aren't standard config (`.env` is OK)
+### Phase 2: HTML Fingerprint Matching (MEDIUM–HIGH)
+- Phishing form patterns (credential harvesting templates)
+- Hidden iframes (clickjacking / drive-by downloads)
+- External script injection from unverified domains
+- Tracking pixels / data beacons
+- Meta refresh auto-redirects
+- Heavy HTML entity / Unicode escape obfuscation
 
-### Low Severity (INFO)
-- `.env` files present (may contain secrets — don't commit)
-- Large binary files (images, compiled artifacts)
-- Git submodules pointing to unknown remotes
+### Phase 3: Banner & Favicon Analysis (HIGH)
+- Asset names matching known crypto brands (MetaMask, Phantom, Uniswap, etc.)
+- HTML titles impersonating DeFi protocols
+- Manifest.json brand impersonation
+
+### Phase 4: Client-Side JS Inspection (MEDIUM–HIGH)
+- Wallet API access / private key material handling
+- Cookie, localStorage, sessionStorage theft patterns
+- Clipboard hijacking (address swap attacks)
+- Dynamic script injection into DOM
+- WebSocket C2 communication channels
+- JS obfuscation (packed code, hex encoding, `atob`/`fromCharCode`)
+- Keyboard event listeners (keylogging)
+- Cryptocurrency mining patterns
+
+### Phase 5: Post-Signature Distributor Check (HIGH)
+- Unlimited token approval patterns (MaxUint256 approve)
+- Post-signature callback execution chains
+- EIP-712 / Permit gasless approval abuse
+- Multicall + transfer batch drain patterns
+
+### Phase 6: Codebase Profile Analysis (MEDIUM)
+- Repository age (new repos = higher risk)
+- Contributor count and commit history depth
+- History rewriting (force push, rebase, amend patterns)
+- Code dump detection (minimal commits, not organic development)
+
+### Phase 7: Function Purpose Analysis (MEDIUM–HIGH)
+- `selfdestruct` / `suicide` in Solidity contracts
+- Arbitrary `delegatecall` patterns
+- Admin backdoor functions (ownership transfer, admin change)
+- Rust/Anchor: unchecked accounts, CPI invocations
+
+### Phase 8: Dependency Audit (HIGH)
+- Known malicious / typosquatted npm packages (curated blocklist)
+- Unrelated packages for smart contract repos (puppeteer, nodemailer, etc.)
+- Git-based dependencies (bypass npm registry)
+- Lock file resolution from suspicious URLs (pastebin, gist, etc.)
+- Custom/private registry references
+- Dependency bloat assessment
+
+### Phase 9: Reachability Analysis (MEDIUM)
+- Orphan files not imported anywhere (hidden payload indicators)
+- Suspicious externally-callable function names (drain, sweep, execute)
+- Fallback/receive with logic (reentrancy entry surfaces)
+
+### Phase 10: OSS Feed & Vulnerability Check (MEDIUM–HIGH)
+- `tx.origin` authentication (phishable)
+- Unchecked call return values
+- Outdated Solidity versions with known compiler bugs
+- Floating pragmas
+- Outdated OpenZeppelin / solc versions
+- npm audit integration (critical/high vulns)
 
 ### Decision Logic
 
@@ -158,7 +210,7 @@ If MEDIUM severity findings → WARN. Show findings. Ask user to confirm proceed
 If only LOW/NONE → Proceed automatically to Phase 1.
 ```
 
-**Always show the malware scan summary** in the scope report regardless of
+**Always show the threat intelligence scan summary** in the scope report regardless of
 findings, so the user knows it was checked.
 
 ---

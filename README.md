@@ -32,22 +32,52 @@ bash scripts/source_fetcher.sh ./src
 
 **Supported explorers:** Etherscan, BSCScan, Polygonscan, Arbiscan, Optimism, Fantom, Avalanche, Base (+ testnets)
 
-### 🛡️ Pre-Audit Malware Scan
-Every scoping session starts with a mandatory malware scan. Untrusted audit codebases can contain shell injection, network exfiltration, and obfuscated payloads targeting auditor machines.
+### 🛡️ Pre-Audit Threat Intelligence Scan
+Every scoping session starts with a mandatory 10-phase threat intelligence scan. Untrusted audit codebases can contain shell injection, network exfiltration, phishing kits, supply chain attacks, and obfuscated payloads targeting auditor machines.
 
 ```bash
-bash scripts/malware_scan.sh ./target-repo
+bash scripts/threat_intel_scan.sh ./target-repo
 ```
 
-**Checks for:**
-- npm lifecycle scripts (`postinstall`, `preinstall`) that execute code
-- Network calls (`curl`, `wget`, `fetch`) in scripts
-- Base64-encoded payloads and suspicious binaries
-- Symlinks pointing outside the repo
-- Forge FFI (`vm.ffi()`) and `eval`/`exec` patterns
-- Hidden files and keypair references
+**10-Phase Scan Coverage:**
+1. **Code Behavior Analysis** — lifecycle scripts, network exfiltration, obfuscated payloads, binaries, eval/exec
+2. **HTML Fingerprint Matching** — phishing forms, hidden iframes, external scripts, tracking pixels, meta redirects
+3. **Banner & Favicon Analysis** — brand impersonation detection via asset names, HTML titles, manifests
+4. **Client-Side JS Inspection** — wallet access, cookie/storage theft, clipboard hijacking, script injection, crypto mining
+5. **Post-Signature Distributor Check** — unlimited approvals, permit abuse, multicall drain patterns
+6. **Codebase Profile Analysis** — repo age, contributor count, commit history, development patterns
+7. **Function Purpose Analysis** — selfdestruct, delegatecall, admin backdoors, dangerous Solana patterns
+8. **Dependency Audit** — typosquatted packages, unrelated dependencies, git deps, lock file anomalies
+9. **Reachability Analysis** — orphan files, suspicious public functions, fallback entry points
+10. **OSS Feed & Vuln Check** — tx.origin auth, outdated compilers, known vulnerable dependencies, npm audit
 
 **Verdict:** `CLEAN` → proceed | `WARNING` → review first | `BLOCKED` → do not run any build commands
+
+### 🗺️ Codebase Complexity Visualizer
+Generate Mermaid diagrams to visually map code complexity, contract relationships, and attack surfaces:
+
+```bash
+# Generate all diagrams to a markdown file
+bash scripts/codebase_visualizer.sh ./src --output complexity_map.md
+
+# Generate only inheritance diagram
+bash scripts/codebase_visualizer.sh ./src --diagram inheritance
+
+# Include test files
+bash scripts/codebase_visualizer.sh ./src --include-tests --output full_map.md
+```
+
+**8 Diagram Types:**
+1. **Inheritance Hierarchy** — contract `is` chains and trait implementations
+2. **Inter-Contract Call Graph** — which contracts call which
+3. **State Variable Map** — class diagram of state vars and functions per contract
+4. **Access Control Flow** — roles, modifiers, and protected function mapping
+5. **External Dependency Graph** — OpenZeppelin, Solmate, custom imports
+6. **Function Flow** — entry points → internal calls → external calls
+7. **Complexity Heatmap** — per-file metrics table (nSLOC, functions, state vars, ext calls)
+8. **Value Flow** — ETH/token deposit, withdraw, transfer, and mint paths
+
+Render output in GitHub, VS Code (Mermaid plugin), or [mermaid.live](https://mermaid.live).
 
 ### 📊 Configurable Audit Pace
 Effort estimation uses a configurable **lines-of-code per day** rate:
@@ -96,7 +126,8 @@ scoping-bee/
 │   └── complexity-rubric.md        # 5-metric scoring rubric + effort estimation
 └── scripts/
     ├── source_fetcher.sh           # Multi-source input fetcher (GitHub/Explorer/ZIP)
-    ├── malware_scan.sh             # Pre-audit malware scanner
+    ├── threat_intel_scan.sh         # Pre-audit threat intelligence scanner
+    ├── codebase_visualizer.sh       # Mermaid diagram generator for complexity
     └── sloc_counter.sh             # Dual-language nSLOC counter
 ```
 
@@ -106,7 +137,7 @@ The skill runs **7 phases** in order:
 
 ```
 Source Acquisition            → Fetch from GitHub / Explorer / ZIP / Local
-Phase 0: Malware Scan         → CLEAN / WARNING / BLOCKED
+Phase 0: Threat Intel Scan    → CLEAN / WARNING / BLOCKED
 Phase 1: Codebase Ingestion   → Contract inventory, nSLOC, dependencies
 Phase 2: Architectural Context → Protocol type, value flow, trust boundaries
 Phase 3: System Mapping        → Per-contract entry points, state, roles
@@ -117,7 +148,7 @@ Phase 6: Report Assembly       → Structured scope document
 
 **Output:** A structured `<protocol>_scope_report.md` with:
 - Executive summary
-- Malware scan results
+- Threat intelligence scan results
 - Contract inventory with nSLOC
 - Architectural context JSON
 - Per-contract system maps
@@ -162,8 +193,11 @@ bash scripts/source_fetcher.sh 0xAbCd...1234 --chain polygon
 # Extract a ZIP
 bash scripts/source_fetcher.sh ./client-contracts.zip --output ./audit-target
 
-# Malware scan a repo before opening it
-bash scripts/malware_scan.sh /path/to/audit/repo
+# Threat intel scan a repo before opening it
+bash scripts/threat_intel_scan.sh /path/to/audit/repo
+
+# Generate Mermaid complexity diagrams
+bash scripts/codebase_visualizer.sh /path/to/src --output complexity_map.md
 
 # Count nSLOC with effort estimate
 bash scripts/sloc_counter.sh /path/to/src --pace 350
