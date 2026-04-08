@@ -48,6 +48,8 @@ Follow the complete methodology in [SKILL.md](SKILL.md):
 
 ### Step 6: Output Report
 Save as `<protocol_name>_scope_report.md` in the current working directory.
+Use the bee-themed template — honeycomb sections, contract roles (Queen/Builder/Worker/Guard/Honeypot),
+ASCII boxes for summaries, amber Mermaid diagrams, and the honeycomb footer.
 
 ## Key Rules
 
