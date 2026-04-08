@@ -32,6 +32,15 @@ Scoping Bee automates the most critical (and most tedious) phase of a security a
 
 <div align="center">
 
+### ⬡ As an AI Skill ⬡
+
+When integrated with an AI coding assistant, simply ask:
+
+> "Scope the audit for https://github.com/org/repo" 
+> "Scope this contract: 0x1234... on BSC" 
+> "Scope the audit for ./src" 
+
+
 ### ⬡ FEATURES ⬡
 
 </div>
@@ -293,15 +302,6 @@ bash scripts/sloc_counter.sh /path/to/src --pace 350
 # Count Rust/Solana nSLOC
 bash scripts/sloc_counter.sh /path/to/programs --lang rust --pace 300
 ```
-
-### 🐝 As an AI Skill
-
-When integrated with an AI coding assistant, simply ask:
-
-> "Scope the audit for https://github.com/org/repo"
-> "Scope this contract: 0x1234... on BSC"
-> "Scope the audit for ./src"
-
 ---
 
 ## License
