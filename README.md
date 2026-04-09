@@ -74,8 +74,22 @@ bash scripts/source_fetcher.sh ./src
 
 Every scoping session starts with a mandatory **10-phase** hive security sweep. Untrusted audit codebases can contain shell injection, network exfiltration, phishing kits, supply chain attacks, and obfuscated payloads targeting auditor machines.
 
+> **⚠️ IMPORTANT: Always run the threat scan in a sandbox first (VM, Docker container, or isolated environment). Only after the scan returns CLEAN should you proceed to analyze the codebase on your local machine. This protects your host from malicious code that the scan is designed to detect.**
+
+```
+  Recommended workflow:
+  1. Fetch source → sandbox environment (VM / Docker / cloud instance)
+  2. Run threat_intel_scan.sh inside the sandbox
+  3. If CLEAN ✅ → clone/copy to local machine and proceed with scoping
+  4. If BLOCKED 🛑 → do NOT move to local. Review findings in sandbox first.
+```
+
 ```bash
+# Step 1: Run in sandbox first
 bash scripts/threat_intel_scan.sh ./target-repo
+
+# Step 2: Only after CLEAN verdict, proceed on local
+bash scripts/sloc_counter.sh ./target-repo
 ```
 
 ```
