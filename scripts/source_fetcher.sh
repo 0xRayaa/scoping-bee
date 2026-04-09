@@ -46,6 +46,14 @@ fi
 shift || true
 while [ $# -gt 0 ]; do
   case "$1" in
+    --output|--chain|--api-key|--branch)
+      if [ $# -lt 2 ]; then
+        echo "❌ Option $1 requires a value"
+        exit 1
+      fi
+      ;;
+    esac
+  case "$1" in
     --output) OUTPUT_DIR="$2"; shift 2 ;;
     --chain) CHAIN="$2"; shift 2 ;;
     --api-key) API_KEY="$2"; shift 2 ;;
@@ -84,9 +92,9 @@ detect_input_type() {
     return
   fi
 
-  # ZIP file
-  if [ -f "$input" ] && echo "$input" | grep -qiE '\.zip$'; then
-    echo "zip"
+  # Archive file (ZIP, tar.gz, tgz, tar.bz2, tar.xz)
+  if [ -f "$input" ] && echo "$input" | grep -qiE '\.(zip|tar\.gz|tgz|tar\.bz2|tbz2|tar\.xz)$'; then
+    echo "archive"
     return
   fi
 
@@ -96,9 +104,9 @@ detect_input_type() {
     return
   fi
 
-  # ZIP that doesn't exist yet
-  if echo "$input" | grep -qiE '\.zip$'; then
-    echo "❌ ZIP file not found: $input" >&2
+  # Archive that doesn't exist yet
+  if echo "$input" | grep -qiE '\.(zip|tar\.gz|tgz|tar\.bz2|tbz2|tar\.xz)$'; then
+    echo "❌ Archive file not found: $input" >&2
     exit 1
   fi
 
@@ -179,8 +187,19 @@ fetch_github() {
 
   git clone --depth 1 --branch "$branch" "${clean_url}.git" "$dest" 2>&1 || {
     echo "   ⚠️  Branch '$branch' not found. Trying default branch..."
+    rm -rf "$dest"
     git clone --depth 1 "$clean_url" "$dest" 2>&1
   }
+
+  # Initialize git submodules (Foundry repos need lib/ populated)
+  if [ -f "$dest/.gitmodules" ]; then
+    echo "   📦 Initializing git submodules..."
+    git -C "$dest" submodule update --init --recursive 2>&1 || {
+      echo "   ⚠️  Submodule init failed (shallow clone). Trying full fetch..."
+      git -C "$dest" fetch --unshallow 2>/dev/null || true
+      git -C "$dest" submodule update --init --recursive 2>&1 || true
+    }
+  fi
 
   echo ""
   echo "   ✅ Cloned to: $dest"
@@ -243,117 +262,123 @@ fetch_explorer() {
   mkdir -p "$dest"
 
   # Extract and write source files using Python
-  python3 << PYEOF
+  # Pass response via stdin and variables via environment to prevent shell injection
+  export FETCHER_DEST="$dest" FETCHER_ADDRESS="$address" FETCHER_CHAIN="$chain"
+  echo "$response" | python3 -c '
 import json, os, sys
 
-response = json.loads('''$response''')
-result = response['result'][0]
+response = json.load(sys.stdin)
+result = response["result"][0]
 
-contract_name = result.get('ContractName', 'Unknown')
-compiler = result.get('CompilerVersion', 'Unknown')
-optimization = result.get('OptimizationUsed', '0')
-runs = result.get('Runs', '200')
-evm_version = result.get('EVMVersion', 'default')
-proxy = result.get('Proxy', '0')
-implementation = result.get('Implementation', '')
+contract_name = result.get("ContractName", "Unknown")
+compiler = result.get("CompilerVersion", "Unknown")
+optimization = result.get("OptimizationUsed", "0")
+runs = result.get("Runs", "200")
+evm_version = result.get("EVMVersion", "default")
+proxy = result.get("Proxy", "0")
+implementation = result.get("Implementation", "")
 
-dest = "$dest"
+dest = os.environ["FETCHER_DEST"]
+address = os.environ["FETCHER_ADDRESS"]
+chain = os.environ["FETCHER_CHAIN"]
 
 print(f"   Contract: {contract_name}")
 print(f"   Compiler: {compiler}")
-print(f"   Optimization: {'Yes' if optimization == '1' else 'No'} ({runs} runs)")
-if proxy == '1':
-    print(f"   ⚠️  Proxy contract! Implementation: {implementation}")
+opt_str = "Yes" if optimization == "1" else "No"
+print(f"   Optimization: {opt_str} ({runs} runs)")
+if proxy == "1":
+    print(f"   Warning: Proxy contract! Implementation: {implementation}")
 print()
 
-source = result.get('SourceCode', '')
+source = result.get("SourceCode", "")
 
 if not source:
-    print("❌ No source code found. Contract may not be verified.")
+    print("Error: No source code found. Contract may not be verified.")
     sys.exit(1)
 
 file_count = 0
 
 # Handle multi-file source (JSON format)
 # Etherscan wraps multi-file in double {{ }}
-if source.startswith('{{'):
+if source.startswith("{{"):
     source = source[1:-1]  # Remove outer braces
 
-if source.startswith('{'):
+if source.startswith("{"):
     try:
         parsed = json.loads(source)
         # Standard JSON input format
-        if 'sources' in parsed:
-            sources = parsed['sources']
+        if "sources" in parsed:
+            sources = parsed["sources"]
         else:
             sources = parsed
 
         for filepath, content in sources.items():
             if isinstance(content, dict):
-                code = content.get('content', '')
+                code = content.get("content", "")
             else:
                 code = content
 
-            # Clean up path
-            filepath = filepath.lstrip('./')
+            # Clean up path — strip leading ./ prefix safely
+            if filepath.startswith("./"):
+                filepath = filepath[2:]
 
             full_path = os.path.join(dest, filepath)
             os.makedirs(os.path.dirname(full_path), exist_ok=True)
 
-            with open(full_path, 'w') as f:
+            with open(full_path, "w") as f:
                 f.write(code)
             file_count += 1
-            print(f"   📄 {filepath}")
+            print(f"   {filepath}")
     except json.JSONDecodeError:
         # Single file that starts with {
         full_path = os.path.join(dest, f"{contract_name}.sol")
-        with open(full_path, 'w') as f:
+        with open(full_path, "w") as f:
             f.write(source)
         file_count = 1
-        print(f"   📄 {contract_name}.sol")
+        print(f"   {contract_name}.sol")
 else:
     # Single file source
     full_path = os.path.join(dest, f"{contract_name}.sol")
-    with open(full_path, 'w') as f:
+    with open(full_path, "w") as f:
         f.write(source)
     file_count = 1
-    print(f"   📄 {contract_name}.sol")
+    print(f"   {contract_name}.sol")
 
 # Write metadata
 meta = {
-    "address": "$address",
-    "chain": "$chain",
+    "address": address,
+    "chain": chain,
     "contract_name": contract_name,
     "compiler": compiler,
-    "optimization": optimization == '1',
+    "optimization": optimization == "1",
     "runs": int(runs),
     "evm_version": evm_version,
-    "is_proxy": proxy == '1',
+    "is_proxy": proxy == "1",
     "implementation": implementation,
-    "abi_available": bool(result.get('ABI', ''))
+    "abi_available": bool(result.get("ABI", ""))
 }
 
-with open(os.path.join(dest, '.explorer_metadata.json'), 'w') as f:
+with open(os.path.join(dest, ".explorer_metadata.json"), "w") as f:
     json.dump(meta, f, indent=2)
 
 # Write ABI if available
-abi = result.get('ABI', '')
-if abi and abi != 'Contract source code not verified':
-    with open(os.path.join(dest, f"{contract_name}.abi.json"), 'w') as f:
+abi = result.get("ABI", "")
+if abi and abi != "Contract source code not verified":
+    with open(os.path.join(dest, f"{contract_name}.abi.json"), "w") as f:
         f.write(abi)
-    print(f"   📄 {contract_name}.abi.json")
+    print(f"   {contract_name}.abi.json")
 
 print()
-print(f"   ✅ Extracted {file_count} source file(s) to: {dest}")
-PYEOF
+print(f"   Extracted {file_count} source file(s) to: {dest}")
+'
 }
 
-fetch_zip() {
-  local zip_path="$1"
+fetch_archive() {
+  local archive_path="$1"
   local dest="$2"
 
-  echo "📥 Extracting ZIP archive..."
-  echo "   File: $zip_path"
+  echo "📥 Extracting archive..."
+  echo "   File: $archive_path"
   echo ""
 
   if [ -d "$dest" ]; then
@@ -363,15 +388,27 @@ fetch_zip() {
 
   mkdir -p "$dest"
 
-  # Check if it's actually a zip
-  if ! file "$zip_path" | grep -qi 'zip'; then
-    echo "❌ File doesn't appear to be a valid ZIP archive"
+  # Detect archive type and extract
+  local file_type
+  file_type=$(file "$archive_path" 2>/dev/null || echo "")
+  if echo "$file_type" | grep -qi 'zip'; then
+    unzip -q "$archive_path" -d "$dest"
+  elif echo "$file_type" | grep -qiE 'gzip|tar'; then
+    tar -xf "$archive_path" -C "$dest"
+  elif echo "$archive_path" | grep -qiE '\.(tar\.gz|tgz)$'; then
+    tar -xzf "$archive_path" -C "$dest"
+  elif echo "$archive_path" | grep -qiE '\.(tar\.bz2|tbz2)$'; then
+    tar -xjf "$archive_path" -C "$dest"
+  elif echo "$archive_path" | grep -qiE '\.tar\.xz$'; then
+    tar -xJf "$archive_path" -C "$dest"
+  elif echo "$archive_path" | grep -qiE '\.zip$'; then
+    unzip -q "$archive_path" -d "$dest"
+  else
+    echo "❌ Unsupported archive format. Supported: .zip, .tar.gz, .tgz, .tar.bz2, .tar.xz"
     exit 1
   fi
 
-  unzip -q "$zip_path" -d "$dest"
-
-  # If zip extracted into a single subdirectory, flatten it
+  # If archive extracted into a single subdirectory, flatten it
   local contents
   contents=$(ls -1 "$dest" | wc -l | tr -d '[:space:]')
   if [ "$contents" = "1" ]; then
@@ -379,9 +416,8 @@ fetch_zip() {
     single_dir=$(ls -1 "$dest")
     if [ -d "$dest/$single_dir" ]; then
       echo "   📂 Flattening single root directory: $single_dir/"
-      # Move contents up one level
-      mv "$dest/$single_dir"/* "$dest/" 2>/dev/null || true
-      mv "$dest/$single_dir"/.* "$dest/" 2>/dev/null || true
+      # Move contents up one level using find to avoid . and .. issues
+      find "$dest/$single_dir" -maxdepth 1 -mindepth 1 -exec mv {} "$dest/" \;
       rmdir "$dest/$single_dir" 2>/dev/null || true
     fi
   fi
@@ -404,7 +440,8 @@ use_directory() {
   local abs_input abs_output
   abs_input=$(cd "$dir" && pwd)
 
-  if [ "$dir" = "$dest" ] || [ "$abs_input" = "$(realpath "$dest" 2>/dev/null || echo "$dest")" ]; then
+  abs_output=$(cd "$dest" 2>/dev/null && pwd || realpath "$dest" 2>/dev/null || echo "$dest")
+  if [ "$dir" = "$dest" ] || [ "$abs_input" = "$abs_output" ]; then
     echo "   ✅ Using in-place: $dir"
   else
     # Copy to output dir
@@ -449,8 +486,8 @@ case "$INPUT_TYPE" in
     fi
     fetch_explorer "$INPUT" "$CHAIN" "$OUTPUT_DIR" "$API_KEY"
     ;;
-  zip)
-    fetch_zip "$INPUT" "$OUTPUT_DIR"
+  archive)
+    fetch_archive "$INPUT" "$OUTPUT_DIR"
     ;;
   directory)
     use_directory "$INPUT" "$OUTPUT_DIR"
@@ -493,7 +530,7 @@ fi
 
 # Check for framework config
 [ -f "$OUTPUT_DIR/foundry.toml" ] && echo "   Framework: Foundry"
-[ -f "$OUTPUT_DIR/hardhat.config.js" ] || [ -f "$OUTPUT_DIR/hardhat.config.ts" ] && echo "   Framework: Hardhat"
+{ [ -f "$OUTPUT_DIR/hardhat.config.js" ] || [ -f "$OUTPUT_DIR/hardhat.config.ts" ]; } && echo "   Framework: Hardhat"
 [ -f "$OUTPUT_DIR/Anchor.toml" ] && echo "   Framework: Anchor (Solana)"
 [ -f "$OUTPUT_DIR/Cargo.toml" ] && echo "   Cargo.toml found"
 

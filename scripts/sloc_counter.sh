@@ -39,8 +39,10 @@ done
 # Auto-detect language
 if [ "$LANG_MODE" = "auto" ]; then
   sol_count=$(find "$TARGET" -name "*.sol" -not -path "*/node_modules/*" -not -path "*/lib/*" 2>/dev/null | wc -l | tr -d '[:space:]')
+  vy_count=$(find "$TARGET" -name "*.vy" -not -path "*/node_modules/*" 2>/dev/null | wc -l | tr -d '[:space:]')
   rs_count=$(find "$TARGET" -name "*.rs" -not -path "*/target/*" 2>/dev/null | wc -l | tr -d '[:space:]')
-  if [ "$sol_count" -gt "$rs_count" ]; then
+  evm_count=$((sol_count + vy_count))
+  if [ "$evm_count" -gt "$rs_count" ]; then
     LANG_MODE="solidity"
   elif [ "$rs_count" -gt 0 ]; then
     LANG_MODE="rust"
@@ -54,23 +56,27 @@ count_total_lines() {
   wc -l < "$1" | tr -d '[:space:]'
 }
 
-# Count comment lines (single-line + block comment lines)
+# Count comment lines — handles // and /* */ without double-counting
 count_comment_lines() {
   local file="$1"
-  local single_line block_lines
-  # Single-line comments (// at start of line, ignoring whitespace)
-  single_line=$(grep -cE '^\s*//' "$file" 2>/dev/null || echo 0)
-  # Block comment lines (lines inside /* ... */ blocks)
-  block_lines=$(perl -0777 -ne '
-    my $count = 0;
-    while (m{/\*(.*?\*/)}gs) {
-      my $block = $1;
-      $count += ($block =~ tr/\n/\n/);
-      $count += 1;  # the opening line
+  perl -ne '
+    BEGIN { $count = 0; $in_block = 0; }
+    if ($in_block) {
+      $count++;
+      if (m{\*/}) { $in_block = 0; }
+      next;
     }
-    print $count;
-  ' "$file")
-  echo $(( single_line + block_lines ))
+    if (m{^\s*/\*}) {
+      $count++;
+      if (!m{\*/}) { $in_block = 1; }
+      next;
+    }
+    if (m{^\s*//}) {
+      $count++;
+      next;
+    }
+    END { print $count; }
+  ' "$file"
 }
 
 # Strip comments safely — avoids stripping // inside string literals
@@ -79,15 +85,13 @@ strip_comments() {
   perl -0777 -pe '
     # Remove block comments
     s{/\*.*?\*/}{}gs;
-    # Remove single-line comments, but not // inside strings
+    # Remove single-line comments, but not // inside double-quoted strings
     s{
-      (\"(?:[^\"\\\\]|\\\\.)*\")   # double-quoted string
+      (\"(?:[^\"\\\\]|\\\\.)*\")   # double-quoted string — preserve
       |
-      ('\''(?:[^'\''\\\\]|\\\\.)*'\'')   # single-quoted string
-      |
-      (//[^\n]*)                    # single-line comment
+      (//[^\n]*)                    # single-line comment — remove
     }{
-      defined($1) ? $1 : defined($2) ? $2 : ""
+      defined($1) ? $1 : ""
     }gex;
   ' "$file"
 }
@@ -113,8 +117,9 @@ count_nsloc_solidity() {
     # Skip blank lines everywhere
     next if $line =~ /^\s*$/;
 
-    # Remove string contents for accurate brace counting
-    (my $clean = $line) =~ s/"(?:[^"\\\\]|\\\\.)*"//g;
+    # Remove string contents (double-quoted and hex strings) for accurate brace counting
+    (my $clean = $line) =~ s/hex"[^"]*"//g;
+    $clean =~ s/"(?:[^"\\\\]|\\\\.)*"//g;
 
     my $opens = ($clean =~ tr/{//);
     my $closes = ($clean =~ tr/}//);
@@ -139,8 +144,6 @@ count_nsloc_solidity() {
       next if $line =~ /^\s*[\{\}\(\)\];,]+\s*$/;
       # Skip function/modifier/constructor signature lines
       next if $line =~ /^\s*(function\s|modifier\s|constructor\s*\(|receive\s*\(|fallback\s*\()/;
-      # Skip multi-line signature parameter lines (before body opens)
-      next if $line =~ /^\s*(address|uint\d*|int\d*|bytes\d*|bool|string|mapping)\s+\w+\s*,?\s*$/;
       # Skip closing paren of multi-line signatures
       next if $line =~ /^\s*\)\s*(external|public|internal|private|view|pure|payable|override|virtual|returns|nonReentrant|whenNotPaused|onlyOwner|onlyTradingModule|onlyRegisteredManager)*[\s{]*$/;
       # Skip lines that are only modifier/visibility keywords
@@ -217,6 +220,7 @@ if [ -f "$TARGET" ]; then
 else
   if [ "$LANG_MODE" = "solidity" ]; then
     EXT="*.sol"
+    EXT2="*.vy"
     EXCLUDES=(-not -path "*/node_modules/*" -not -path "*/lib/*")
     if [ "$INCLUDE_TESTS" = false ]; then
       EXCLUDES+=(-not -path "*/test/*" -not -path "*/tests/*" -not -path "*/mock/*" -not -path "*/mocks/*" -not -path "*/script/*" -not -path "*/scripts/*" -not -name "Mock*" -not -name "mock*" -not -name "*Mock.sol" -not -name "*mock.sol")
@@ -230,7 +234,7 @@ else
   fi
   while IFS= read -r f; do
     FILES+=("$f")
-  done < <(find "$TARGET" -name "$EXT" "${EXCLUDES[@]}" 2>/dev/null | sort)
+  done < <(find "$TARGET" \( -name "$EXT" ${EXT2:+-o -name "$EXT2"} \) "${EXCLUDES[@]}" 2>/dev/null | sort)
 fi
 
 if [ ${#FILES[@]} -eq 0 ]; then
@@ -254,8 +258,8 @@ printf "%-55s %8s %8s %8s\n" "--------------------------------------------------
 for file in "${FILES[@]}"; do
   # Skip interface-only Solidity files if flag not set
   if [ "$LANG_MODE" = "solidity" ] && [ "$INCLUDE_INTERFACES" = false ]; then
-    is_interface=$(head -30 "$file" | grep -cE '^\s*(interface|abstract contract)\s+' 2>/dev/null || true)
-    has_impl=$(grep -cE '^\s*function\s+\w+.*\{' "$file" 2>/dev/null || true)
+    is_interface=$(grep -cE '^\s*(interface|abstract contract)\s+' "$file" 2>/dev/null || true)
+    has_impl=$(grep -cE '^\s*function\s+\w+[^;]*\{' "$file" 2>/dev/null || true)
     if [ "$is_interface" -gt 0 ] && [ "$has_impl" -lt 2 ]; then
       continue
     fi
@@ -304,8 +308,8 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "📈 CODE METRICS"
 echo ""
-if [ "$TOTAL_SLOC" -gt 0 ]; then
-  COMMENT_RATIO=$(awk "BEGIN {printf \"%.2f\", $TOTAL_COMMENT_LINES / $TOTAL_SLOC}")
+if [ "${TOTAL_SLOC:-0}" -gt 0 ]; then
+  COMMENT_RATIO=$(awk "BEGIN {printf \"%.2f\", ${TOTAL_COMMENT_LINES:-0} / ${TOTAL_SLOC:-1}}")
   echo "   Total lines:            $TOTAL_LINES"
   echo "   Source lines (SLOC):    $TOTAL_SLOC"
   echo "   Normalized (nSLOC):     $TOTAL_NSLOC"
