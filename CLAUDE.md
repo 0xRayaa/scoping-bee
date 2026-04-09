@@ -23,6 +23,9 @@ bash <project_root>/scripts/source_fetcher.sh <input> --output ./audit-target [O
 ```
 
 ### Step 2: 🛡️ Threat Intel Scan (MANDATORY)
+
+> **⚠️ SANDBOX FIRST: Run the threat scan in an isolated environment (VM/Docker/cloud) before analyzing on local machine. Only proceed locally after a CLEAN verdict.**
+
 ```bash
 bash <project_root>/scripts/threat_intel_scan.sh ./audit-target
 ```

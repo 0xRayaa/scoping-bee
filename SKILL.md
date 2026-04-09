@@ -166,6 +166,8 @@ If input is a local directory → use directly → proceed
 **Run this BEFORE any other analysis.** Untrusted audit codebases can contain
 malware, phishing kits, supply chain attacks, and backdoors targeting auditor machines.
 
+> **⚠️ SANDBOX FIRST: Always run the threat scan in an isolated environment (VM, Docker container, or cloud instance) before analyzing the codebase on your local machine. Only move the code to your local environment after a CLEAN verdict. If BLOCKED, review findings inside the sandbox — do NOT copy to local.**
+
 ```bash
 bash <skill_dir>/scripts/threat_intel_scan.sh <project_root>
 ```
