@@ -75,7 +75,7 @@ Any of these inputs should trigger the full pipeline automatically:
 ### Pipeline Steps
 
 1. **Fetch source** — run `source_fetcher.sh` to normalize input into `./audit-target`
-2. **Threat scan** — run `threat_intel_scan.sh` on the fetched source (MANDATORY)
+2. **Threat scan** — follow [THREAT_INTEL_SKILL.md](THREAT_INTEL_SKILL.md) methodology on the fetched source (MANDATORY). Do NOT use `threat_intel_scan.sh`.
 3. **Proceed if clean** — run Phases 1–6 on the normalized source
 4. **Output report** — save as `<protocol_name>_scope_report.md` using the template
    in [scope-report-template.md](references/scope-report-template.md)
@@ -83,6 +83,7 @@ Any of these inputs should trigger the full pipeline automatically:
 ### Decision Logic After Threat Scan
 
 ```
+If CRITICAL findings → BLOCK immediately. Do NOT proceed under any circumstances.
 If HIGH severity findings → STOP. Report findings. Ask user to review.
 If MEDIUM severity findings → WARN. Show findings. Ask user to confirm proceed.
 If only LOW/NONE → Proceed automatically to Phase 1.
@@ -168,86 +169,33 @@ malware, phishing kits, supply chain attacks, and backdoors targeting auditor ma
 
 > **⚠️ SANDBOX FIRST: Always run the threat scan in an isolated environment (VM, Docker container, or cloud instance) before analyzing the codebase on your local machine. Only move the code to your local environment after a CLEAN verdict. If BLOCKED, review findings inside the sandbox — do NOT copy to local.**
 
-```bash
-bash <skill_dir>/scripts/threat_intel_scan.sh <project_root>
-```
+> **⚠️ DO NOT use `threat_intel_scan.sh`.** Follow the comprehensive methodology in [THREAT_INTEL_SKILL.md](THREAT_INTEL_SKILL.md) instead. It covers 16 phases of deep threat analysis across all languages and attack classes.
 
-The scan performs **10 phases** of deep threat analysis:
+The scan performs **16 phases** of deep threat analysis (see [THREAT_INTEL_SKILL.md](THREAT_INTEL_SKILL.md) for full details):
 
-### Phase 1: Code Behavior Analysis (HIGH)
-- **Auto-exec lifecycle scripts**: npm `postinstall`/`preinstall` hooks
-- **Network exfiltration**: `curl`, `wget`, `fetch`, `sendBeacon`, outbound HTTP
-- **Obfuscated payloads**: Base64 strings, hex-encoded shellcode
-- **Suspicious binaries**: Compiled executables, `.so`/`.dylib`/`.bin` files
-- **External symlinks**: Links pointing outside the repo
-- **Dynamic code execution**: `eval`, `exec`, `spawn`, `child_process`, `Function()`
-- **Forge FFI**: `vm.ffi()` calls in Solidity
-
-### Phase 2: HTML Fingerprint Matching (MEDIUM–HIGH)
-- Phishing form patterns (credential harvesting templates)
-- Hidden iframes (clickjacking / drive-by downloads)
-- External script injection from unverified domains
-- Tracking pixels / data beacons
-- Meta refresh auto-redirects
-- Heavy HTML entity / Unicode escape obfuscation
-
-### Phase 3: Banner & Favicon Analysis (HIGH)
-- Asset names matching known crypto brands (MetaMask, Phantom, Uniswap, etc.)
-- HTML titles impersonating DeFi protocols
-- Manifest.json brand impersonation
-
-### Phase 4: Client-Side JS Inspection (MEDIUM–HIGH)
-- Wallet API access / private key material handling
-- Cookie, localStorage, sessionStorage theft patterns
-- Clipboard hijacking (address swap attacks)
-- Dynamic script injection into DOM
-- WebSocket C2 communication channels
-- JS obfuscation (packed code, hex encoding, `atob`/`fromCharCode`)
-- Keyboard event listeners (keylogging)
-- Cryptocurrency mining patterns
-
-### Phase 5: Post-Signature Distributor Check (HIGH)
-- Unlimited token approval patterns (MaxUint256 approve)
-- Post-signature callback execution chains
-- EIP-712 / Permit gasless approval abuse
-- Multicall + transfer batch drain patterns
-
-### Phase 6: Codebase Profile Analysis (MEDIUM)
-- Repository age (new repos = higher risk)
-- Contributor count and commit history depth
-- History rewriting (force push, rebase, amend patterns)
-- Code dump detection (minimal commits, not organic development)
-
-### Phase 7: Function Purpose Analysis (MEDIUM–HIGH)
-- `selfdestruct` / `suicide` in Solidity contracts
-- Arbitrary `delegatecall` patterns
-- Admin backdoor functions (ownership transfer, admin change)
-- Rust/Anchor: unchecked accounts, CPI invocations
-
-### Phase 8: Dependency Audit (HIGH)
-- Known malicious / typosquatted npm packages (curated blocklist)
-- Unrelated packages for smart contract repos (puppeteer, nodemailer, etc.)
-- Git-based dependencies (bypass npm registry)
-- Lock file resolution from suspicious URLs (pastebin, gist, etc.)
-- Custom/private registry references
-- Dependency bloat assessment
-
-### Phase 9: Reachability Analysis (MEDIUM)
-- Orphan files not imported anywhere (hidden payload indicators)
-- Suspicious externally-callable function names (drain, sweep, execute)
-- Fallback/receive with logic (reentrancy entry surfaces)
-
-### Phase 10: OSS Feed & Vulnerability Check (MEDIUM–HIGH)
-- `tx.origin` authentication (phishable)
-- Unchecked call return values
-- Outdated Solidity versions with known compiler bugs
-- Floating pragmas
-- Outdated OpenZeppelin / solc versions
-- npm audit integration (critical/high vulns)
+| Phase | Name | Severity |
+|-------|------|----------|
+| 1 | Code Execution & Persistence | HIGH |
+| 2 | Network Exfiltration & C2 | HIGH |
+| 3 | Obfuscation & Encoding | HIGH |
+| 4 | Credential & Secret Theft | HIGH |
+| 5 | Filesystem & System Access | HIGH |
+| 6 | HTML/Phishing & Web Attacks | HIGH |
+| 7 | Smart Contract Malicious (Solidity) | HIGH |
+| 8 | Smart Contract Malicious (Rust/Solana) | HIGH |
+| 9 | Python Malicious Patterns | HIGH |
+| 10 | Go Malicious Patterns | HIGH |
+| 11 | Dependency & Supply Chain | CRITICAL–HIGH |
+| 12 | Git & Repository Profiling | MEDIUM |
+| 13 | Infrastructure & Configuration | HIGH |
+| 14 | Cryptographic Abuse | MEDIUM–HIGH |
+| 15 | Runtime & Environment Detection | HIGH |
+| 16 | Reachability & Call Graph | MEDIUM |
 
 ### Decision Logic
 
 ```
+If CRITICAL findings → BLOCK immediately. Do NOT proceed under any circumstances.
 If HIGH severity findings → STOP. Report findings. Ask user to review.
 If MEDIUM severity findings → WARN. Show findings. Ask user to confirm proceed.
 If only LOW/NONE → Proceed automatically to Phase 1.

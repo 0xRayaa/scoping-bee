@@ -26,9 +26,10 @@ bash <project_root>/scripts/source_fetcher.sh <input> --output ./audit-target [O
 
 > **⚠️ SANDBOX FIRST: Run the threat scan in an isolated environment (VM/Docker/cloud) before analyzing on local machine. Only proceed locally after a CLEAN verdict.**
 
-```bash
-bash <project_root>/scripts/threat_intel_scan.sh ./audit-target
-```
+> **⚠️ DO NOT use `threat_intel_scan.sh`.** Follow the comprehensive 16-phase methodology in [THREAT_INTEL_SKILL.md](THREAT_INTEL_SKILL.md) instead.
+
+Execute all 16 phases from THREAT_INTEL_SKILL.md against `./audit-target`:
+- If CRITICAL findings → BLOCK. Do NOT proceed under any circumstances
 - If HIGH findings → STOP and report to user
 - If MEDIUM findings → WARN and ask to confirm
 - If clean → continue
