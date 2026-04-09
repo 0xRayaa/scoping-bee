@@ -17,6 +17,12 @@
 #   bash sloc_counter.sh ./src --pace 300               # Use 300 LOC/day estimate
 
 set -euo pipefail
+export LC_ALL=C
+
+# Dependency check
+for cmd in perl find wc; do
+  command -v "$cmd" &>/dev/null || { echo "❌ Required tool not found: $cmd"; exit 1; }
+done
 
 TARGET="${1:-.}"
 LANG_MODE="auto"

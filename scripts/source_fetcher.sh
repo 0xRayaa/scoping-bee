@@ -30,6 +30,12 @@
 #   bash source_fetcher.sh ./existing-directory
 
 set -euo pipefail
+export LC_ALL=C
+
+# Dependency check
+for cmd in git curl python3 unzip; do
+  command -v "$cmd" &>/dev/null || { echo "❌ Required tool not found: $cmd"; exit 1; }
+done
 
 INPUT="${1:-}"
 OUTPUT_DIR="./audit-target"

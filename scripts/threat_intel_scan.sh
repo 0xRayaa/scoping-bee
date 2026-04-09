@@ -14,6 +14,26 @@
 #   2 = HIGH severity findings (block, require explicit user approval)
 
 set -euo pipefail
+export LC_ALL=C
+
+# Dependency check
+for cmd in find grep sed; do
+  command -v "$cmd" &>/dev/null || { echo "❌ Required tool not found: $cmd"; exit 1; }
+done
+
+# Use distinct exit codes: 0=clean, 10=medium, 20=high, 3=timeout, 1=script error
+trap 'echo "❌ Scan failed with unexpected error (exit code $?)"; exit 1' ERR
+
+# Timeout: abort if scan takes longer than 5 minutes
+SCAN_TIMEOUT=300
+SCAN_START=$(date +%s)
+check_timeout() {
+  local now=$(date +%s)
+  if [ $((now - SCAN_START)) -gt $SCAN_TIMEOUT ]; then
+    echo "⚠️  Scan timeout (${SCAN_TIMEOUT}s) — aborting. Target may be too large or contain circular structures."
+    exit 3
+  fi
+}
 
 TARGET="${1:-.}"
 
@@ -68,6 +88,7 @@ echo ""
 # What does this code actually do? Static analysis of intent.
 # ════════════════════════════════════════════════════════════════
 
+check_timeout
 echo "🔍 Phase 1: Code Behavior Analysis..."
 
 # 1a. npm postinstall/preinstall scripts (auto-execution on install)
@@ -82,19 +103,22 @@ fi
 while IFS= read -r f; do
   matches=$(grep -nE '(curl |wget |fetch\(|http\.get|https\.get|axios\.|request\(|XMLHttpRequest|sendBeacon)' "$f" 2>/dev/null || true)
   if [ -n "$matches" ]; then
-    add_finding "HIGH" "Network exfiltration" "$(basename "$f"): outbound network calls detected"
+    add_finding "MEDIUM" "Network exfiltration" "$(basename "$f"): outbound network calls detected"
   fi
 done < <(find "$TARGET" \( -name "*.sh" -o -name "*.js" -o -name "*.ts" -o -name "*.py" -o -name "*.mjs" -o -name "*.cjs" \) \
-  -not -path "*/node_modules/*" -not -path "*/lib/*" -not -path "*/target/*" 2>/dev/null)
+  -not -path "*/node_modules/*" -not -path "*/lib/*" -not -path "*/target/*" \
+  -not -path "*/test/*" -not -path "*/tests/*" -not -path "*/deploy/*" -not -path "*/script/*" -not -path "*/scripts/*" \
+  -not -name "hardhat.config.*" -not -name "*.config.*" 2>/dev/null)
 
 # 1c. Base64 encoded payloads (long base64 strings > 100 chars)
 while IFS= read -r f; do
   b64=$(grep -nE '[A-Za-z0-9+/]{100,}={0,2}' "$f" 2>/dev/null | head -3 || true)
   if [ -n "$b64" ]; then
-    add_finding "HIGH" "Obfuscated payload" "$(basename "$f"): large Base64-encoded string detected"
+    add_finding "MEDIUM" "Obfuscated payload" "$(basename "$f"): large Base64-encoded string detected"
   fi
-done < <(find "$TARGET" \( -name "*.js" -o -name "*.ts" -o -name "*.py" -o -name "*.sh" -o -name "*.sol" -o -name "*.rs" -o -name "*.html" -o -name "*.mjs" -o -name "*.cjs" \) \
-  -not -path "*/node_modules/*" -not -path "*/lib/*" -not -path "*/target/*" 2>/dev/null)
+done < <(find "$TARGET" \( -name "*.js" -o -name "*.ts" -o -name "*.py" -o -name "*.sh" -o -name "*.rs" -o -name "*.html" -o -name "*.mjs" -o -name "*.cjs" \) \
+  -not -path "*/node_modules/*" -not -path "*/lib/*" -not -path "*/target/*" \
+  -not -name "*.sol" -not -path "*/typechain-types/*" -not -path "*/artifacts/*" -not -path "*/out/*" 2>/dev/null)
 
 # 1d. Compiled binaries or shared objects
 while IFS= read -r f; do
@@ -125,12 +149,12 @@ done < <(find "$TARGET" -name "*.sol" -not -path "*/node_modules/*" -not -path "
 
 # 1g. eval/exec/spawn — dynamic code execution
 while IFS= read -r f; do
-  evals=$(grep -nE '\b(eval|exec|execSync|child_process|spawn|subprocess|Function\()\b' "$f" 2>/dev/null | grep -v "node_modules" || true)
+  evals=$(grep -nE '\b(eval\s*\(|execSync\s*\(|child_process|spawn\s*\(|subprocess\.(run|call|Popen|check_output)|new\s+Function\s*\()\b' "$f" 2>/dev/null | grep -v "node_modules" || true)
   if [ -n "$evals" ]; then
-    add_finding "HIGH" "Dynamic code execution" "$(basename "$f"): eval/exec/spawn patterns found"
+    add_finding "MEDIUM" "Dynamic code execution" "$(basename "$f"): eval/exec/spawn patterns found"
   fi
 done < <(find "$TARGET" \( -name "*.js" -o -name "*.ts" -o -name "*.py" -o -name "*.mjs" -o -name "*.cjs" \) \
-  -not -path "*/node_modules/*" -not -path "*/lib/*" -not -path "*/target/*" 2>/dev/null)
+  -not -path "*/node_modules/*" -not -path "*/lib/*" -not -path "*/target/*" -not -name "*.sol" 2>/dev/null)
 
 # 1h. Hex-encoded shellcode patterns
 while IFS= read -r f; do
@@ -146,6 +170,7 @@ done < <(find "$TARGET" \( -name "*.js" -o -name "*.ts" -o -name "*.py" -o -name
 # Check HTML files against known phishing/malware fingerprints.
 # ════════════════════════════════════════════════════════════════
 
+check_timeout
 echo "🌐 Phase 2: HTML Fingerprint Analysis..."
 
 while IFS= read -r f; do
@@ -195,6 +220,7 @@ done < <(find "$TARGET" \( -name "*.html" -o -name "*.htm" -o -name "*.svg" -o -
 # Detect brand impersonation via favicon/logo hashes.
 # ════════════════════════════════════════════════════════════════
 
+check_timeout
 echo "🏷️  Phase 3: Banner & Favicon Matching..."
 
 # 3a. Check for favicon files and suspicious naming
@@ -245,6 +271,7 @@ fi
 # Deep inspection of JS files for malicious call patterns.
 # ════════════════════════════════════════════════════════════════
 
+check_timeout
 echo "⚡ Phase 4: Client-Side JavaScript Analysis..."
 
 while IFS= read -r f; do
@@ -306,6 +333,7 @@ done < <(find "$TARGET" \( -name "*.js" -o -name "*.mjs" -o -name "*.cjs" -o -na
 # Detect code that executes after signing or approval flows.
 # ════════════════════════════════════════════════════════════════
 
+check_timeout
 echo "🔏 Phase 5: Post-Signature Distributor Check..."
 
 while IFS= read -r f; do
@@ -314,7 +342,10 @@ while IFS= read -r f; do
   # 5a. Approval + immediate transfer patterns (approval phishing)
   approval_drain=$(grep -nEi '(approve\s*\(.*MaxUint|approve\s*\(.*115792|setApprovalForAll|increaseAllowance)' "$f" 2>/dev/null || true)
   if [ -n "$approval_drain" ]; then
-    add_finding "HIGH" "Unlimited approval pattern" "$rel_path: requests unlimited token approval — common drainer technique"
+    case "$f" in
+      *.sol) add_finding "LOW" "Token approval pattern" "$rel_path: uses unlimited approval — common in DeFi, verify intent" ;;
+      *) add_finding "HIGH" "Unlimited approval pattern" "$rel_path: requests unlimited token approval — common drainer technique" ;;
+    esac
   fi
 
   # 5b. Post-signature callback execution
@@ -343,14 +374,13 @@ done < <(find "$TARGET" \( -name "*.js" -o -name "*.ts" -o -name "*.sol" -o -nam
 # Analyze git history and contributor patterns.
 # ════════════════════════════════════════════════════════════════
 
+check_timeout
 echo "👤 Phase 6: Codebase Profile Analysis..."
 
 if [ -d "$TARGET/.git" ]; then
   # 6a. Repo age check (newly created repos are higher risk)
-  first_commit_date=$(cd "$TARGET" && git log --reverse --format="%ai" 2>/dev/null | head -1 || true)
-  if [ -n "$first_commit_date" ]; then
-    first_epoch=$(date -j -f "%Y-%m-%d %H:%M:%S %z" "$first_commit_date" "+%s" 2>/dev/null || \
-                  date -d "$first_commit_date" "+%s" 2>/dev/null || echo "0")
+  first_epoch=$(cd "$TARGET" && git log --reverse --format="%ct" 2>/dev/null | head -1 || echo "0")
+  if [ "$first_epoch" -gt 0 ] 2>/dev/null; then
     now_epoch=$(date "+%s")
     if [ "$first_epoch" -gt 0 ]; then
       age_days=$(( (now_epoch - first_epoch) / 86400 ))
@@ -369,7 +399,12 @@ if [ -d "$TARGET/.git" ]; then
   fi
 
   # 6c. Check for force pushes or history rewriting
-  reflog_rewrites=$(cd "$TARGET" && git reflog 2>/dev/null | grep -c "rebase\|reset\|amend" || echo "0")
+  reflog_count=$(cd "$TARGET" && git reflog 2>/dev/null | wc -l | tr -d ' ' || echo "0")
+  if [ "$reflog_count" -gt 5 ]; then
+    reflog_rewrites=$(cd "$TARGET" && git reflog 2>/dev/null | grep -c "rebase\|reset\|amend" || echo "0")
+  else
+    reflog_rewrites=0  # Too few reflog entries (likely cloned repo) — skip check
+  fi
   if [ "$reflog_rewrites" -gt 5 ]; then
     add_finding "LOW" "History rewritten" "Git reflog shows $reflog_rewrites rebase/reset/amend events — history may be altered"
   fi
@@ -393,6 +428,7 @@ fi
 # Identify attacking functions vs legitimate contract logic.
 # ════════════════════════════════════════════════════════════════
 
+check_timeout
 echo "⚙️  Phase 7: Function Purpose Analysis..."
 
 # 7a. Solidity: selfdestruct / delegatecall / arbitrary call patterns
@@ -455,6 +491,7 @@ done < <(find "$TARGET" -name "*.rs" -not -path "*/node_modules/*" -not -path "*
 # Check for unnecessary, suspicious, or typosquatted packages.
 # ════════════════════════════════════════════════════════════════
 
+check_timeout
 echo "📦 Phase 8: Dependency Audit..."
 
 if [ -f "$TARGET/package.json" ]; then
@@ -505,7 +542,14 @@ if [ -f "$TARGET/package.json" ]; then
   done
 
   # 8d. Dependency count check (bloated repos)
-  dep_count=$(echo "$pkg_content" | grep -c '"[^"]*"\s*:\s*"[~^><=0-9]' 2>/dev/null || echo "0")
+  dep_count=$(echo "$pkg_content" | python3 -c "
+import sys, json
+try:
+    pkg = json.load(sys.stdin)
+    deps = len(pkg.get('dependencies', {})) + len(pkg.get('devDependencies', {}))
+    print(deps)
+except: print(0)
+" 2>/dev/null || echo "0")
   if [ "$dep_count" -gt 50 ]; then
     add_finding "LOW" "Heavy dependencies" "package.json has $dep_count dependencies — increases supply chain risk"
   fi
@@ -524,6 +568,32 @@ if [ -f "$TARGET/package.json" ]; then
 
 fi
 
+# Cargo.toml dependency check
+if [ -f "$TARGET/Cargo.toml" ]; then
+  # Check for suspicious crate names (typosquatting)
+  SUSPICIOUS_CRATES=("soldeer" "tokioo" "abortt" "serdee" "borsh-derive-internal-malicious")
+  cargo_content=$(cat "$TARGET/Cargo.toml" 2>/dev/null)
+  for crate in "${SUSPICIOUS_CRATES[@]}"; do
+    if echo "$cargo_content" | grep -q "\"$crate\"" 2>/dev/null; then
+      add_finding "HIGH" "Suspicious Rust crate" "Cargo.toml depends on suspicious crate: $crate"
+    fi
+  done
+
+  # Check for git dependencies (bypass crates.io)
+  cargo_git_deps=$(grep -nE '^\s*\[.*\]|git\s*=' "$TARGET/Cargo.toml" 2>/dev/null | grep -E 'git\s*=' || true)
+  if [ -n "$cargo_git_deps" ]; then
+    add_finding "MEDIUM" "Cargo git dependencies" "Cargo.toml has git-based dependencies — bypasses crates.io checks"
+  fi
+
+  # Check for build.rs with network/exec
+  if [ -f "$TARGET/build.rs" ]; then
+    build_exec=$(grep -nE '(Command::new|std::process|reqwest|curl|wget|std::net)' "$TARGET/build.rs" 2>/dev/null || true)
+    if [ -n "$build_exec" ]; then
+      add_finding "HIGH" "Suspicious build script" "build.rs contains process execution or network calls"
+    fi
+  fi
+fi
+
 # Check for yarn/pnpm lock anomalies
 for lockfile in "package-lock.json" "yarn.lock" "pnpm-lock.yaml"; do
   if [ -f "$TARGET/$lockfile" ]; then
@@ -540,18 +610,23 @@ done
 # Check if suspicious code patterns are actually callable.
 # ════════════════════════════════════════════════════════════════
 
+check_timeout
 echo "🔗 Phase 9: Reachability Analysis..."
 
 # 9a. Check for dead/unreachable code files (imported nowhere)
 orphan_count=0
+
+# Build import index once (much faster than per-file grep -rl)
+ALL_IMPORTS=$(grep -rE "(import|require\()" "$TARGET" \
+  --include="*.js" --include="*.ts" --include="*.sol" --include="*.mjs" --include="*.tsx" --include="*.jsx" \
+  2>/dev/null | grep -v "node_modules" || true)
+
 while IFS= read -r f; do
   fname=$(basename "$f" | sed 's/\.[^.]*$//')
   rel_path=$(echo "$f" | sed "s|$TARGET/||")
 
-  # Check if this file is imported/required anywhere
-  import_refs=$(grep -rlE "(import.*['\"].*${fname}|require\(['\"].*${fname})" "$TARGET" \
-    --include="*.js" --include="*.ts" --include="*.sol" --include="*.mjs" --include="*.tsx" --include="*.jsx" \
-    2>/dev/null | grep -v "$f" | grep -v "node_modules" | head -1 || true)
+  # Check if this file's name appears in any import/require statement across the project
+  import_refs=$(echo "$ALL_IMPORTS" | grep -F "$fname" | grep -v "$f" | head -1 || true)
 
   if [ -z "$import_refs" ]; then
     # Check Solidity inheritance
@@ -601,6 +676,7 @@ done < <(find "$TARGET" -name "*.sol" -not -path "*/node_modules/*" -not -path "
 # Cross-reference against known vulnerability patterns.
 # ════════════════════════════════════════════════════════════════
 
+check_timeout
 echo "📡 Phase 10: OSS Feed & Known Vulnerability Check..."
 
 # 10a. Check for known vulnerable Solidity patterns
@@ -666,7 +742,7 @@ fi
 
 # 10d. npm audit (if npm is available and package-lock exists)
 if [ -f "$TARGET/package-lock.json" ] && command -v npm &>/dev/null; then
-  audit_output=$(cd "$TARGET" && npm audit --json 2>/dev/null || true)
+  audit_output=$(npm audit --json --package-lock-only --prefix "$TARGET" 2>/dev/null || true)
   if [ -n "$audit_output" ]; then
     critical_vulns=$(echo "$audit_output" | grep -o '"critical":[0-9]*' | head -1 | grep -o '[0-9]*' || echo "0")
     high_vulns=$(echo "$audit_output" | grep -o '"high":[0-9]*' | head -1 | grep -o '[0-9]*' || echo "0")
@@ -683,6 +759,7 @@ fi
 # MEDIUM SEVERITY — Config-level checks
 # ════════════════════════════════════════════════════════════════
 
+check_timeout
 echo "🟡 Checking configuration-level threats..."
 
 # FFI enabled in foundry.toml
@@ -707,7 +784,10 @@ while IFS= read -r f; do
   case "$base" in
     .env|.env.*|.gitignore|.gitmodules|.gitattributes|.prettierrc*|.solhint*|.eslintrc*|\
     .editorconfig|.npmrc|.nvmrc|.tool-versions|.github|.husky|.vscode|.idea|\
-    .DS_Store|.browserslistrc|.babelrc*|.postcssrc*|.stylelintrc*) ;;
+    .DS_Store|.browserslistrc|.babelrc*|.postcssrc*|.stylelintrc*|\
+    .rustfmt.toml|.cargo|.solcover.js|.solcover.ts|.gitkeep|.dockerignore|.changeset|\
+    .yarn|.yarnrc*|.pnp.*|.node-version|.ruby-version|.python-version|\
+    .flake8|.isort.cfg|.mypy.ini|.pylintrc|.clang-format|.clang-tidy|.swift-format) ;;
     *) add_finding "MEDIUM" "Hidden file" "Non-standard hidden file: $(echo "$f" | sed "s|$TARGET/||")" ;;
   esac
 done < <(find "$TARGET" -maxdepth 3 -name ".*" -not -path "*/node_modules/*" \
@@ -726,6 +806,7 @@ done < <(find "$TARGET" \( -name "*.sh" -o -name "*.ts" -o -name "*.js" -o -name
 # LOW SEVERITY — Informational
 # ════════════════════════════════════════════════════════════════
 
+check_timeout
 echo "🟢 Checking informational patterns..."
 
 # .env files present
@@ -736,7 +817,7 @@ done < <(find "$TARGET" -maxdepth 3 -name ".env*" -not -name ".env.example" -not
 
 # Large binary files (>1MB)
 while IFS= read -r f; do
-  size=$(stat -f%z "$f" 2>/dev/null || stat -c%s "$f" 2>/dev/null || echo "0")
+  size=$(wc -c < "$f" 2>/dev/null | tr -d '[:space:]' || echo "0")
   if [ "$size" -gt 1048576 ]; then
     size_mb=$(echo "scale=1; $size / 1048576" | bc 2>/dev/null || echo "?")
     add_finding "LOW" "Large file" "$(echo "$f" | sed "s|$TARGET/||") (${size_mb}MB)"
@@ -819,11 +900,11 @@ if [ $HIGH_COUNT -gt 0 ]; then
   echo "🚫 VERDICT: BLOCKED — $HIGH_COUNT high-severity finding(s) detected."
   echo "   Review findings above before proceeding with audit scoping."
   echo "   Do NOT run forge test, npm install, or any build commands."
-  exit 2
+  exit 20
 elif [ $MEDIUM_COUNT -gt 0 ]; then
   echo "⚠️  VERDICT: WARNING — $MEDIUM_COUNT medium-severity finding(s) detected."
   echo "   Review findings above. Proceed with caution."
-  exit 1
+  exit 10
 else
   echo "✅ VERDICT: CLEAN — No high/medium severity findings. Safe to proceed."
   exit 0

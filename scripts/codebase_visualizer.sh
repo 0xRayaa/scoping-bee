@@ -8,7 +8,7 @@
 #   --lang <solidity|rust|auto>    Language (default: auto-detect)
 #   --output <file.md>             Output file (default: stdout)
 #   --include-tests                Include test files in diagrams
-#   --diagram <all|inheritance|calls|state|access|deps|flow>
+#   --diagram <all|inheritance|calls|state|access|deps|flow|complexity|value>
 #                                  Which diagrams to generate (default: all)
 #
 # Generates Mermaid-formatted diagrams:
@@ -23,6 +23,12 @@
 # rendered in GitHub, VS Code, or any Mermaid-compatible viewer.
 
 set -euo pipefail
+export LC_ALL=C
+
+# Dependency check
+for cmd in perl find grep sed; do
+  command -v "$cmd" &>/dev/null || { echo "❌ Required tool not found: $cmd"; exit 1; }
+done
 
 TARGET="${1:-.}"
 LANG_MODE="auto"
@@ -100,6 +106,7 @@ sanitize() {
 # ════════════════════════════════════════════════════════════════
 
 BUFFER=""
+# Buffer limit: for very large repos, consider using --output to write to file
 
 emit() {
   BUFFER+="$1"$'\n'
@@ -122,6 +129,10 @@ flush() {
 declare -a CONTRACT_NAMES=()
 declare -a CONTRACT_FILES=()
 declare -a CONTRACT_TYPES=()  # contract, interface, abstract, library
+declare -A CALL_EDGES_MAP=()
+declare -A IMPORT_EDGES_MAP=()
+declare -A MODIFIERS_MAP=()
+declare -A ROLES_MAP=()
 
 extract_solidity_metadata() {
   for file in "${FILES[@]}"; do
@@ -260,7 +271,7 @@ generate_call_graph() {
   emit ""
 
   local has_edges=false
-  local CALL_EDGES_SEEN=""
+  CALL_EDGES_MAP=()
 
   if [ "$LANG_MODE" = "solidity" ]; then
     for file in "${FILES[@]}"; do
@@ -270,11 +281,11 @@ generate_call_graph() {
 
       # Find external contract calls: ISomeContract(addr).method() or contract.method()
       while IFS= read -r line; do
-        local called=$(echo "$line" | grep -oE '[A-Z][A-Za-z0-9_]+\([^)]*\)\.[a-zA-Z]' | sed -E 's/\(.*//' || true)
+        local called=$(echo "$line" | grep -oE '[A-Z][A-Za-z0-9_]+\([^)]*\)\.[a-zA-Z]' | grep -vE '^(uint|int|address|bytes|bool|string|Error|Type)\d*\(' | sed -E 's/\(.*//' || true)
         if [ -n "$called" ]; then
           local edge_key="${current_contract}->${called}"
-          if ! echo "$CALL_EDGES_SEEN" | grep -qF "|${edge_key}|"; then
-            CALL_EDGES_SEEN="${CALL_EDGES_SEEN}|${edge_key}|"
+          if [[ -z "${CALL_EDGES_MAP[$edge_key]+x}" ]]; then
+            CALL_EDGES_MAP[$edge_key]=1
             emit "  $(sanitize "$current_contract") -->|calls| $(sanitize "$called")"
             has_edges=true
           fi
@@ -303,8 +314,8 @@ generate_call_graph() {
         local target=$(echo "$line" | grep -oE '[a-z_]+::[a-z_]+' | head -1 | cut -d: -f1 || true)
         if [ -n "$target" ]; then
           local edge_key="${current_mod}->${target}"
-          if ! echo "$CALL_EDGES_SEEN" | grep -qF "|${edge_key}|"; then
-            CALL_EDGES_SEEN="${CALL_EDGES_SEEN}|${edge_key}|"
+          if [[ -z "${CALL_EDGES_MAP[$edge_key]+x}" ]]; then
+            CALL_EDGES_MAP[$edge_key]=1
             emit "  $(sanitize "$current_mod") -->|CPI| $(sanitize "$target")"
             has_edges=true
           fi
@@ -449,8 +460,8 @@ generate_access_control_diagram() {
   local has_content=false
 
   if [ "$LANG_MODE" = "solidity" ]; then
-    local MODIFIERS_LIST=""
-    local ROLES_LIST=""
+    MODIFIERS_MAP=()
+    ROLES_MAP=()
 
     for file in "${FILES[@]}"; do
       local current_contract=$(grep -oE '(contract|abstract contract)\s+[A-Za-z0-9_]+' "$file" 2>/dev/null | head -1 | awk '{print $NF}' || true)
@@ -458,8 +469,8 @@ generate_access_control_diagram() {
 
       # Extract modifiers defined in this contract
       while IFS= read -r mod_name; do
-        if ! echo "$MODIFIERS_LIST" | grep -qF "|${mod_name}|"; then
-          MODIFIERS_LIST="${MODIFIERS_LIST}|${mod_name}|"
+        if [[ -z "${MODIFIERS_MAP[$mod_name]+x}" ]]; then
+          MODIFIERS_MAP[$mod_name]=1
           emit "  $(sanitize "mod_${mod_name}")[\"🔒 ${mod_name}\"]:::modifier"
           has_content=true
         fi
@@ -468,8 +479,8 @@ generate_access_control_diagram() {
       # Extract role-based patterns
       while IFS= read -r role; do
         role=$(echo "$role" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-        if [ -n "$role" ] && ! echo "$ROLES_LIST" | grep -qF "|${role}|"; then
-          ROLES_LIST="${ROLES_LIST}|${role}|"
+        if [ -n "$role" ] && [[ -z "${ROLES_MAP[$role]+x}" ]]; then
+          ROLES_MAP[$role]=1
           emit "  $(sanitize "role_${role}")[\"👤 ${role}\"]:::role"
           has_content=true
         fi
@@ -559,7 +570,7 @@ generate_dependency_diagram() {
   emit ""
 
   local has_edges=false
-  local IMPORT_EDGES_SEEN=""
+  IMPORT_EDGES_MAP=()
 
   if [ "$LANG_MODE" = "solidity" ]; then
     for file in "${FILES[@]}"; do
@@ -589,8 +600,8 @@ generate_dependency_diagram() {
         [ -z "$dep_name" ] && continue
 
         local edge_key="${current_contract}->${dep_name}"
-        if ! echo "$IMPORT_EDGES_SEEN" | grep -qF "|${edge_key}|"; then
-          IMPORT_EDGES_SEEN="${IMPORT_EDGES_SEEN}|${edge_key}|"
+        if [[ -z "${IMPORT_EDGES_MAP[$edge_key]+x}" ]]; then
+          IMPORT_EDGES_MAP[$edge_key]=1
           emit "  $(sanitize "$current_contract")[\"${current_contract}\"]:::internal -->|imports| $(sanitize "dep_${dep_name}")[\"${dep_name}\"]:::${dep_class}"
           has_edges=true
         fi
@@ -614,8 +625,8 @@ generate_dependency_diagram() {
         [ "$dep" = "solana_program" ] && dep_class="solmate"
 
         local edge_key="${current_mod}->${dep}"
-        if ! echo "$IMPORT_EDGES_SEEN" | grep -qF "|${edge_key}|"; then
-          IMPORT_EDGES_SEEN="${IMPORT_EDGES_SEEN}|${edge_key}|"
+        if [[ -z "${IMPORT_EDGES_MAP[$edge_key]+x}" ]]; then
+          IMPORT_EDGES_MAP[$edge_key]=1
           emit "  $(sanitize "$current_mod") -->|uses| $(sanitize "dep_${dep}")[\"${dep}\"]:::${dep_class}"
           has_edges=true
         fi
@@ -682,14 +693,14 @@ generate_function_flow() {
         # Get the function body (approximate: from function declaration to next function)
         for int_func in ${int_funcs[@]+"${int_funcs[@]}"}; do
           # Check if internal function is referenced in the external function's area
-          local call_found=$(grep -A50 "function ${ext_func}" "$file" 2>/dev/null | grep -c "\b${int_func}\b" || echo "0")
+          local call_found=$(grep -A200 "function ${ext_func}" "$file" 2>/dev/null | grep -c "\b${int_func}\b" || echo "0")
           if [ "$call_found" -gt 0 ]; then
             emit "  $(sanitize "${current_contract}_${ext_func}") --> $(sanitize "${current_contract}_${int_func}")[\"🟡 ${int_func}()\"]:::internal"
           fi
         done
 
         # Check for external contract calls from this function
-        local ext_calls=$(grep -A30 "function ${ext_func}" "$file" 2>/dev/null | grep -oE '[A-Z][A-Za-z0-9_]+\([^)]*\)\.[a-zA-Z]+' | sed 's/(.*//' | sort -u | head -5 || true)
+        local ext_calls=$(grep -A200 "function ${ext_func}" "$file" 2>/dev/null | grep -oE '[A-Z][A-Za-z0-9_]+\([^)]*\)\.[a-zA-Z]+' | grep -vE '^(uint|int|address|bytes|bool|string|Error|Type)\d*\(' | sed 's/(.*//' | sort -u | head -5 || true)
         while IFS= read -r ext_call; do
           [ -z "$ext_call" ] && continue
           emit "  $(sanitize "${current_contract}_${ext_func}") --> $(sanitize "ext_${ext_call}")[\"🔴 ${ext_call}\"]:::external_call"
@@ -748,6 +759,7 @@ generate_complexity_summary() {
     local contract_name=$(grep -oE '(contract|abstract contract|library|struct|mod)\s+[A-Za-z0-9_]+' "$file" 2>/dev/null | head -1 | awk '{print $NF}' || true)
     [ -z "$contract_name" ] && contract_name=$(basename "$file" | sed 's/\.[^.]*$//')
 
+    # Note: simplified nSLOC estimate — for precise counts use sloc_counter.sh
     # Count nSLOC (simplified)
     local nsloc=$(perl -0777 -pe 's{/\*.*?\*/}{}gs' "$file" 2>/dev/null | sed -E '/^[[:space:]]*$/d; /^[[:space:]]*\/\//d; /^[[:space:]]*[{}][[:space:]]*$/d; /^[[:space:]]*(pragma|import|use |mod )/d' | wc -l | tr -d '[:space:]' || echo "0")
 
@@ -758,8 +770,8 @@ generate_complexity_summary() {
 
     if [ "$LANG_MODE" = "solidity" ]; then
       func_count=$(grep -cE '^\s*function\s+' "$file" 2>/dev/null || echo "0")
-      state_count=$(grep -cE '^\s+(mapping|uint|int|address|bool|bytes|string)\b' "$file" 2>/dev/null || echo "0")
-      ext_calls=$(grep -cE '\.[a-z]+\(' "$file" 2>/dev/null || echo "0")
+      state_count=$(grep -cE '^\s+(mapping|uint|int|address|bool|bytes|string)\b[^;]*(public|private|internal|immutable|constant)\b' "$file" 2>/dev/null || echo "0")
+      ext_calls=$(grep -cE '(\.transfer\(|\.call\{|\.delegatecall\(|\.staticcall\(|\.safeTransfer|\.approve\(|I[A-Z][A-Za-z]+\()' "$file" 2>/dev/null || echo "0")
       mod_count=$(grep -cE '^\s*modifier\s+' "$file" 2>/dev/null || echo "0")
     else
       func_count=$(grep -cE '^\s*(pub\s+)?fn\s+' "$file" 2>/dev/null || echo "0")
@@ -839,6 +851,27 @@ generate_value_flow() {
       fi
 
     done
+  else
+    # Rust/Anchor: basic value flow patterns
+    for file in "${FILES[@]}"; do
+      local current_mod=$(grep -oE '(pub\s+)?mod\s+[A-Za-z0-9_]+' "$file" 2>/dev/null | head -1 | awk '{print $NF}' || true)
+      [ -z "$current_mod" ] && current_mod=$(basename "$file" .rs)
+      local msid=$(sanitize "$current_mod")
+
+      # SOL transfers
+      local sol_transfers=$(grep -nE 'system_instruction::transfer|invoke.*system_program|lamports' "$file" 2>/dev/null | head -3 || true)
+      if [ -n "$sol_transfers" ]; then
+        emit "  User_SOL[\"SOL Transfer\"]:::deposit --> ${msid}[\"${current_mod}\"]"
+        has_flow=true
+      fi
+
+      # SPL token transfers
+      local spl_transfers=$(grep -nE 'token::transfer|token::mint_to|token::burn|Transfer\s*{' "$file" 2>/dev/null | head -3 || true)
+      if [ -n "$spl_transfers" ]; then
+        emit "  ${msid} -->|SPL token| Token_Move[\"Token Transfer\"]:::transfer"
+        has_flow=true
+      fi
+    done
   fi
 
   if [ "$has_flow" = false ]; then
@@ -888,9 +921,11 @@ case "$DIAGRAM_MODE" in
   access) generate_access_control_diagram ;;
   deps) generate_dependency_diagram ;;
   flow) generate_function_flow ;;
+  complexity) generate_complexity_summary ;;
+  value) generate_value_flow ;;
   *)
     echo "Unknown diagram mode: $DIAGRAM_MODE"
-    echo "Options: all, inheritance, calls, state, access, deps, flow"
+    echo "Options: all, inheritance, calls, state, access, deps, flow, complexity, value"
     exit 1
     ;;
 esac
