@@ -58,8 +58,26 @@ if [ "$LANG_MODE" = "auto" ]; then
 fi
 
 # Count total lines in a file
+# Fix for files without a trailing newline: `wc -l` counts newlines, not lines,
+# so a 1-byte file "a" (no EOL) reports 0. Add 1 when the last byte isn't \n
+# and the file is non-empty, so a file with any content reports at least 1 line.
 count_total_lines() {
-  wc -l < "$1" | tr -d '[:space:]'
+  local file="$1"
+  local size
+  size=$(wc -c < "$file" | tr -d '[:space:]')
+  if [ "${size:-0}" -eq 0 ]; then
+    echo 0
+    return
+  fi
+  local nl_count
+  nl_count=$(wc -l < "$file" | tr -d '[:space:]')
+  # If last byte is not a newline, the trailing partial line is uncounted — add 1.
+  local last_byte
+  last_byte=$(tail -c 1 "$file" 2>/dev/null | od -An -c | tr -d '[:space:]')
+  if [ "$last_byte" != "\\n" ]; then
+    nl_count=$((nl_count + 1))
+  fi
+  echo "$nl_count"
 }
 
 # Count comment lines — handles // and /* */ without double-counting
@@ -253,6 +271,15 @@ TOTAL_NSLOC=0
 TOTAL_LINES=0
 TOTAL_COMMENT_LINES=0
 TOTAL_FILES=0
+SKIPPED_INTERFACES=0
+SKIPPED_REEXPORTS=0
+
+# When a single file is passed explicitly, always process it — the user asked
+# for that file by name, so silent filter-skipping is wrong.
+SINGLE_FILE_TARGET=false
+if [ -f "$TARGET" ]; then
+  SINGLE_FILE_TARGET=true
+fi
 
 echo "🐝 Scoping Bee — nSLOC Counter"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -262,21 +289,24 @@ printf "%-55s %8s %8s %8s\n" "File" "Lines" "SLOC" "nSLOC"
 printf "%-55s %8s %8s %8s\n" "-------------------------------------------------------" "--------" "--------" "--------"
 
 for file in "${FILES[@]}"; do
-  # Skip interface-only Solidity files if flag not set
-  if [ "$LANG_MODE" = "solidity" ] && [ "$INCLUDE_INTERFACES" = false ]; then
+  # Skip interface-only Solidity files if flag not set — BUT never skip when the
+  # user explicitly passed a single file as the target.
+  if [ "$LANG_MODE" = "solidity" ] && [ "$INCLUDE_INTERFACES" = false ] && [ "$SINGLE_FILE_TARGET" = false ]; then
     is_interface=$(grep -cE '^\s*(interface|abstract contract)\s+' "$file" 2>/dev/null || true)
     has_impl=$(grep -cE '^\s*function\s+\w+[^;]*\{' "$file" 2>/dev/null || true)
     if [ "$is_interface" -gt 0 ] && [ "$has_impl" -lt 2 ]; then
+      SKIPPED_INTERFACES=$((SKIPPED_INTERFACES + 1))
       continue
     fi
   fi
 
-  # Skip Rust mod.rs and lib.rs (re-export only)
-  if [ "$LANG_MODE" = "rust" ]; then
+  # Skip Rust mod.rs and lib.rs (re-export only) — same exception for single file.
+  if [ "$LANG_MODE" = "rust" ] && [ "$SINGLE_FILE_TARGET" = false ]; then
     base=$(basename "$file")
     if [ "$base" = "mod.rs" ] || [ "$base" = "lib.rs" ]; then
-      file_total_lines=$(wc -l < "$file" | tr -d '[:space:]')
+      file_total_lines=$(count_total_lines "$file")
       if [ "$file_total_lines" -lt 20 ]; then
+        SKIPPED_REEXPORTS=$((SKIPPED_REEXPORTS + 1))
         continue  # Skip tiny re-export files
       fi
     fi
@@ -299,15 +329,25 @@ for file in "${FILES[@]}"; do
   fi
 
   printf "%-55s %8s %8s %8s\n" "$rel_path" "$total_lines" "$sloc" "$nsloc"
-  TOTAL_LINES=$((TOTAL_LINES + total_lines))
-  TOTAL_SLOC=$((TOTAL_SLOC + sloc))
-  TOTAL_NSLOC=$((TOTAL_NSLOC + nsloc))
-  TOTAL_COMMENT_LINES=$((TOTAL_COMMENT_LINES + comment_lines))
+  TOTAL_LINES=$((TOTAL_LINES + ${total_lines:-0}))
+  TOTAL_SLOC=$((TOTAL_SLOC + ${sloc:-0}))
+  TOTAL_NSLOC=$((TOTAL_NSLOC + ${nsloc:-0}))
+  TOTAL_COMMENT_LINES=$((TOTAL_COMMENT_LINES + ${comment_lines:-0}))
   TOTAL_FILES=$((TOTAL_FILES + 1))
 done
 
 printf "%-55s %8s %8s %8s\n" "-------------------------------------------------------" "--------" "--------" "--------"
 printf "%-55s %8s %8s %8s\n" "TOTAL ($TOTAL_FILES files)" "$TOTAL_LINES" "$TOTAL_SLOC" "$TOTAL_NSLOC"
+
+if [ "$TOTAL_FILES" -eq 0 ] && [ "$SKIPPED_INTERFACES" -gt 0 ]; then
+  echo ""
+  echo "ℹ️  All discovered files were interface-only and were skipped."
+  echo "    Re-run with --include-interfaces to count them."
+elif [ "$SKIPPED_INTERFACES" -gt 0 ] || [ "$SKIPPED_REEXPORTS" -gt 0 ]; then
+  echo ""
+  [ "$SKIPPED_INTERFACES" -gt 0 ] && echo "ℹ️  Skipped $SKIPPED_INTERFACES interface-only file(s) (pass --include-interfaces to count them)."
+  [ "$SKIPPED_REEXPORTS" -gt 0 ] && echo "ℹ️  Skipped $SKIPPED_REEXPORTS Rust re-export file(s) (mod.rs / lib.rs < 20 lines)."
+fi
 
 # Comment-to-source ratio
 echo ""

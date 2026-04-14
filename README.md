@@ -32,6 +32,118 @@ Scoping Bee automates the most critical (and most tedious) phase of a security a
 
 <div align="center">
 
+### ⬡ INSTALLATION ⬡
+
+</div>
+
+## 🔧 Install
+
+Scoping Bee is a set of bash scripts plus an AI-skill definition — no compile step, no package install. Clone it and point your AI assistant at it, or run the scripts directly.
+
+### 1. Clone the repo
+
+```bash
+git clone https://github.com/<owner>/scoping-bee.git ~/.scoping-bee
+```
+
+(Or clone anywhere you prefer; the path is referenced from your project via `CLAUDE.md` or the skill loader.)
+
+### 2. Prerequisites
+
+| Tool | Why | Install |
+|:-----|:----|:--------|
+| `bash` 4+ | Runs the scripts | macOS: `brew install bash`; Linux: pre-installed |
+| `perl` | Comment-stripping / nSLOC counting | macOS/Linux: pre-installed |
+| `find`, `wc`, `grep`, `sed`, `awk`, `od` | Core shell utilities | Pre-installed |
+| `git` | GitHub clone input | `brew install git` / apt / dnf |
+| `curl`, `jq` | Block-explorer API fetch (only for address / explorer-URL inputs) | `brew install curl jq` |
+| `unzip` | ZIP archive input | Pre-installed |
+
+The threat-intel scan and the analysis phases use only the tools above — no pip/npm installs required.
+
+### 3. Wire it into an AI assistant (optional)
+
+**Claude Code (per-project):**
+
+```bash
+cd /path/to/your/scoping-project
+mkdir -p .claude
+cat > CLAUDE.md << 'EOF'
+# 🐝 Scoping Project
+Use the scoping-bee skill at ~/.scoping-bee for all audit scoping tasks.
+When given a GitHub URL, ZIP, or contract address, run the full scoping pipeline from SKILL.md.
+EOF
+```
+
+**Cursor / other assistants:** reference `SKILL.md` directly and pass the skill folder path in your prompt.
+
+### 4. Environment variables (optional)
+
+Only needed for explorer / contract-address inputs:
+
+```bash
+export EXPLORER_API_KEY=<your_etherscan_or_chain_api_key>
+```
+
+### 5. Smoke test
+
+```bash
+bash ~/.scoping-bee/scripts/sloc_counter.sh ~/.scoping-bee --lang solidity
+# Expect: "No source files found" (scoping-bee itself has no .sol files)
+
+bash ~/.scoping-bee/scripts/sloc_counter.sh /path/to/some/contracts
+```
+
+If nSLOC prints, you're ready.
+
+---
+
+<div align="center">
+
+### ⬡ RENDERING THE REPORT ⬡
+
+</div>
+
+## 🖼️ How to view Mermaid diagrams in the report
+
+The generated `<protocol>_scope_report.md` embeds Mermaid flow diagrams. They render **natively** in some viewers and need a plugin in others.
+
+| Viewer | Works out of the box? | Notes |
+|:-------|:---------------------|:------|
+| GitHub web UI | ✅ Yes | Native rendering in any `.md` file since 2022 |
+| GitLab web UI | ✅ Yes | Native |
+| VS Code (default preview) | ❌ No | Needs an extension (see below) |
+| Cursor | ❌ No | Same extension as VS Code |
+| Obsidian | ✅ Yes | Native |
+| Typora | ✅ Yes | Native |
+| Any plain editor | ❌ No | Paste the fenced ` ```mermaid ` block into a Mermaid-aware viewer |
+
+### ✅ Recommended: VS Code / Cursor extension
+
+Install **Markdown Preview Mermaid Support** (free, no subscription, no sign-in):
+
+```bash
+# VS Code
+code --install-extension bierner.markdown-mermaid
+
+# Cursor
+cursor --install-extension bierner.markdown-mermaid
+```
+
+Then open the report and press `Cmd/Ctrl+Shift+V` to preview — diagrams render inline.
+
+### ✅ Alternative: push to GitHub
+
+Commit the report to any GitHub repo (public or private) and open it in the web UI — Mermaid blocks render without any configuration.
+
+### ⚠️ Note on mermaid.live
+
+`mermaid.live` works in the browser without an account for quick one-off rendering. It prompts for sign-in only if you try to save or share diagrams to their cloud. For viewing reports you don't need to sign up — prefer the VS Code extension or GitHub for a smoother local workflow.
+
+---
+
+<div align="center">
+
 ### ⬡ As an AI Skill ⬡
 
 When integrated with an AI coding assistant, simply ask:
