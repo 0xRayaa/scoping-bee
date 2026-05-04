@@ -23,11 +23,43 @@ language and framework commonly seen in smart-contract audit engagements.
 
 ---
 
+## TWO METHODS TO RUN THIS SCAN
+
+### Method A — Isolated Docker scan (preferred)
+
+Runs the full 16-phase scanner inside a container with `--network none` and a
+read-only mount. The untrusted code never executes on your machine.
+
+```bash
+bash <project_root>/scripts/run_threat_scan.sh ./audit-target
+```
+
+This wraps `scripts/threat_intel_scan.sh` (which implements every phase below)
+inside the image built from `scanner/Dockerfile`. Exit codes:
+`0` = CLEAN, `10` = MEDIUM, `20` = HIGH (block), `1` = Docker unavailable,
+`3` = scan timeout. Use Method A whenever Docker is installed.
+
+### Method B — LLM-driven manual scan (fallback)
+
+When Docker is not available, the LLM walks through the 16 phases below and
+runs the grep/find checks directly against the target directory.
+
+> **⚠️ Method B executes scan commands on the host. Do NOT run `npm install`,
+> `forge build`, or any build/test commands until the scan reports CLEAN.**
+
+Both methods cover the same 16 phases and use the same severity levels and
+decision logic.
+
+---
+
 ## INVOCATION
 
 ```
 When the user asks to run a threat intel scan, or when a new codebase is
-received for audit, execute ALL phases below against the target directory.
+received for audit:
+  1. Try Method A (Docker). If Docker is available, prefer it.
+  2. Otherwise fall back to Method B and execute ALL phases below
+     against the target directory.
 Report findings grouped by severity (HIGH > MEDIUM > LOW > INFO).
 ```
 

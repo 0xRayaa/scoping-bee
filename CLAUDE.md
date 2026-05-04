@@ -24,15 +24,32 @@ bash <project_root>/scripts/source_fetcher.sh <input> --output ./audit-target [O
 
 ### Step 2: 🛡️ Threat Intel Scan (MANDATORY)
 
-> **⚠️ SANDBOX FIRST: Run the threat scan in an isolated environment (VM/Docker/cloud) before analyzing on local machine. Only proceed locally after a CLEAN verdict.**
+Two methods are available — **prefer Method A (Docker)** when Docker is installed.
 
-> **⚠️ DO NOT use `threat_intel_scan.sh`.** Follow the comprehensive 16-phase methodology in [THREAT_INTEL_SKILL.md](THREAT_INTEL_SKILL.md) instead.
+#### Method A — Isolated Docker scan (preferred)
 
-Execute all 16 phases from THREAT_INTEL_SKILL.md against `./audit-target`:
-- If CRITICAL findings → BLOCK. Do NOT proceed under any circumstances
-- If HIGH findings → STOP and report to user
-- If MEDIUM findings → WARN and ask to confirm
-- If clean → continue
+> **⚠️ Runs inside a Docker container with `--network none` and a read-only mount. The untrusted code never executes on your machine.**
+
+```bash
+bash <project_root>/scripts/run_threat_scan.sh ./audit-target
+```
+
+Wraps `scripts/threat_intel_scan.sh` (16-phase scanner) inside the image built from `scanner/Dockerfile`. On first run with no cached image, the script builds it locally; subsequent runs reuse the cache and start instantly.
+
+Interpret the exit code:
+- `0` → CLEAN — continue
+- `10` → MEDIUM findings — warn user, ask to confirm before continuing
+- `20` → HIGH findings — BLOCK. Do NOT proceed under any circumstances
+- `1` → Docker unavailable — fall back to Method B
+- `3` → Scan timeout — investigate before proceeding
+
+#### Method B — LLM-driven manual scan (fallback)
+
+When Docker is not available, follow the 16-phase methodology in [THREAT_INTEL_SKILL.md](THREAT_INTEL_SKILL.md) and run the grep/find checks directly against `./audit-target`.
+
+> **⚠️ Method B executes scan commands on the host. Do NOT run `npm install`, `forge build`, or any build/test commands until the scan reports CLEAN.**
+
+Apply the same severity-based decision logic as Method A (BLOCK on HIGH/CRITICAL, WARN on MEDIUM, proceed on LOW/INFO only).
 
 ### Step 3: 📊 Count nSLOC
 ```bash
